@@ -39,12 +39,6 @@ bog-tenders download --tender 2000
 bog-tenders download --year 2025 -o ./pdfs -k
 ```
 
-Old-style usage (no subcommand) still works:
-
-```bash
-bog-tenders --year 2025
-```
-
 ### Parse PDFs into Excel
 
 ```bash
