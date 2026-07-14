@@ -1,43 +1,66 @@
 # bog-tenders
 
-Fetch Bank of Ghana GOG T-Bill auction result PDFs.
+Fetch and parse Bank of Ghana GOG T-Bill auction result PDFs.
 
-Probes the BOG website for PDFs by computing tender dates from a reference point
-(Tender 2000 = March 27, 2026, tenders every 7 days) and trying the expected
-URL pattern plus adjacent-month fallbacks.
+Download PDFs from the BOG website by computing tender dates from a reference
+point (Tender 2000 = March 27, 2026, tenders every 7 days). Then parse them
+into an Excel tracker.
 
 ## Install
 
 ```bash
 pip install -e .
 
-# with requests (faster, optional)
-pip install -e ".[fast]"
+# options
+pip install -e ".[fast,parse]"
 ```
 
 Or run directly without installing:
 
 ```bash
-python -m bog_tenders --year 2025
+python -m bog_tenders download --year 2025
 ```
 
 ## Usage
 
+### Download PDFs
+
 ```bash
 # all tenders for a year (stops at today's date)
-bog-tenders --year 2025
+bog-tenders download --year 2025
 
 # range of years
-bog-tenders --year 2024-2026
+bog-tenders download --year 2024-2026
 
 # single tender
-bog-tenders --tender 2000
+bog-tenders download --tender 2000
 
 # custom output dir, skip SSL verification
-bog-tenders --year 2025 -o ./pdfs -k
+bog-tenders download --year 2025 -o ./pdfs -k
+```
+
+Old-style usage (no subcommand) still works:
+
+```bash
+bog-tenders --year 2025
+```
+
+### Parse PDFs into Excel
+
+```bash
+# create new tracker
+bog-tenders parse build results.xlsx ./pdfs
+
+# append new PDFs to existing tracker
+bog-tenders parse append results.xlsx ./pdfs
+
+# search directories recursively, show debug output
+bog-tenders parse build results.xlsx ./pdfs --recursive -v
 ```
 
 ### Options
+
+#### `download`
 
 | Flag | Description |
 |------|-------------|
@@ -46,6 +69,16 @@ bog-tenders --year 2025 -o ./pdfs -k
 | `-o`, `--output` | Output directory (default: `downloads`) |
 | `-d`, `--delay` | Seconds between requests (default: `0.5`) |
 | `-k`, `--no-verify-ssl` | Skip SSL certificate verification (on by default) |
+
+#### `parse`
+
+| Flag | Description |
+|------|-------------|
+| `mode` | `build` (new) or `append` (existing tracker) |
+| `tracker` | Path to the `.xlsx` file |
+| `paths` | PDF files and/or directories |
+| `--recursive` | Search directories recursively |
+| `-v`, `--verbose` | Debug output |
 
 ## How it works
 
@@ -61,4 +94,6 @@ then probes the URL, trying the expected month and adjacent months to handle
 date drift from holidays. The `x`-suffix variant (`Auctresults-{N}x.pdf`)
 is also checked as a fallback.
 
-Already-downloaded files are skipped automatically.
+Already-downloaded files are skipped automatically. Parsed PDFs are
+de-duplicated on (tender_no, ISIN) and sorted chronologically in the Excel
+tracker.

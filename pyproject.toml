@@ -5,13 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "bog-tenders"
 version = "0.1.0"
-description = "Fetch Bank of Ghana GOG T-Bill auction result PDFs"
+description = "Fetch and parse Bank of Ghana GOG T-Bill auction result PDFs"
 requires-python = ">=3.10"
 license = "MIT"
 dependencies = []
 
 [project.optional-dependencies]
 fast = ["requests>=2.28"]
+parse = ["pdfplumber", "openpyxl"]
 
 [project.scripts]
 bog-tenders = "bog_tenders.cli:main"
@@ -30,3 +31,8 @@ reportAny = "none"
 reportMissingModuleSource = "none"
 reportMissingImports = "none"
 reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportImplicitStringConcatenation = "none"
+reportOptionalMemberAccess = "none"
+reportUnusedParameter = "none"
+reportExplicitAny = "none"

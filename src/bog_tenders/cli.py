@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 from datetime import date
 from pathlib import Path
@@ -65,31 +66,7 @@ def fetch_year(
     return found
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(
-        prog="bog-tenders",
-        description="Fetch Bank of Ghana GOG T-Bill auction result PDFs",
-    )
-    p.add_argument("--year", "-y", help="Year (2025) or range (2024-2026)")
-    p.add_argument("--tender", "-t", type=int, help="Fetch a specific tender number")
-    p.add_argument(
-        "--output", "-o", default="downloads", help="Output dir (default: downloads)"
-    )
-    p.add_argument(
-        "--delay",
-        "-d",
-        type=float,
-        default=0.5,
-        help="Seconds between requests (default: 0.5)",
-    )
-    p.add_argument(
-        "-k",
-        "--no-verify-ssl",
-        action="store_true",
-        help="Skip SSL certificate verification",
-    )
-    args = p.parse_args()
-
+def _run_download(args: argparse.Namespace) -> None:
     year = cast("str | None", args.year)
     tender = cast("int | None", args.tender)
     output = cast("str", args.output)
@@ -97,7 +74,8 @@ def main() -> None:
     no_verify_ssl = cast("bool", args.no_verify_ssl)
 
     if not year and not tender:
-        p.error("specify --year or --tender")
+        print("error: specify --year or --tender", file=sys.stderr)
+        raise SystemExit(1)
 
     if no_verify_ssl:
         network.verify_ssl = False
@@ -116,3 +94,64 @@ def main() -> None:
             fetch_year(y, out, delay, end_date=end if y == int(b) else None)
     elif year is not None:
         fetch_year(int(year), out, delay, end_date=date.today())
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="bog-tenders",
+        description="Bank of Ghana GOG T-Bill auction results tool",
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    dl = sub.add_parser("download", help="Download PDFs from BOG website")
+    dl.add_argument("--year", "-y", help="Year (2025) or range (2024-2026)")
+    dl.add_argument("--tender", "-t", type=int, help="Fetch a specific tender number")
+    dl.add_argument(
+        "--output", "-o", default="downloads", help="Output dir (default: downloads)"
+    )
+    dl.add_argument(
+        "--delay",
+        "-d",
+        type=float,
+        default=0.5,
+        help="Seconds between requests (default: 0.5)",
+    )
+    dl.add_argument(
+        "-k",
+        "--no-verify-ssl",
+        action="store_true",
+        help="Skip SSL certificate verification",
+    )
+
+    pr = sub.add_parser("parse", help="Parse PDFs into Excel tracker")
+    pr.add_argument(
+        "mode",
+        choices=["build", "append"],
+        help="Create new or append to existing tracker",
+    )
+    pr.add_argument("tracker", type=Path, help="Output .xlsx file")
+    pr.add_argument("paths", nargs="+", help="PDF files and/or directories")
+    pr.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Search directories recursively",
+    )
+    pr.add_argument("-v", "--verbose", action="store_true", help="Debug output")
+
+    if (
+        len(sys.argv) > 1
+        and sys.argv[1].startswith("-")
+        and sys.argv[1] not in ("-h", "--help")
+    ):
+        sys.argv.insert(1, "download")
+
+    args = parser.parse_args()
+
+    if args.command == "download":
+        _run_download(args)
+    elif args.command == "parse":
+        from .parse import main as parse_main
+
+        parse_main(args)
+    else:
+        parser.print_help()
