@@ -25,8 +25,14 @@ def tender_for_date(target: date) -> int:
     return REFERENCE_TENDER + round(delta / DAYS_PER_TENDER)
 
 
-def tender_range_for_year(year: int) -> list[int]:
-    """Return the list of candidate tender numbers whose dates fall in `year`."""
+def tender_range_for_year(year: int, end_date: date | None = None) -> list[int]:
+    """Return the list of candidate tender numbers whose dates fall in `year`.
+
+    If *end_date* is given, exclude tenders whose date is after it.
+    """
     lo = tender_for_date(date(year, 1, 1)) - 2
     hi = tender_for_date(date(year, 12, 31)) + 2
-    return [n for n in range(lo, hi + 1) if tender_date(n).year == year]
+    candidates = [n for n in range(lo, hi + 1) if tender_date(n).year == year]
+    if end_date is not None:
+        candidates = [n for n in candidates if tender_date(n) <= end_date]
+    return candidates

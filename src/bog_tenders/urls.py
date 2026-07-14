@@ -9,7 +9,9 @@ BASE_URL = "https://www.bog.gov.gh/wp-content/uploads"
 
 def pdf_url(tender_number: int, d: date, suffix: str = "") -> str:
     """Build a PDF URL for a tender number and month."""
-    return f"{BASE_URL}/{d.year:04d}/{d.month:02d}/Auctresults-{tender_number}{suffix}.pdf"
+    return (
+        f"{BASE_URL}/{d.year:04d}/{d.month:02d}/Auctresults-{tender_number}{suffix}.pdf"
+    )
 
 
 def month_variants(d: date) -> list[date]:

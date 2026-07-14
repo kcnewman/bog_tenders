@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import argparse
 import time
-import warnings
+from datetime import date
 from pathlib import Path
 from typing import cast
 
-from . import http
+from . import network
 from .tenders import tender_date, tender_range_for_year
-from .urls import pdf_url, month_variants
+from .urls import month_variants, pdf_url
 
 
 def fetch_tender(tender_number: int, output_dir: Path, delay: float) -> bool:
@@ -27,14 +27,14 @@ def fetch_tender(tender_number: int, output_dir: Path, delay: float) -> bool:
 
     for md in month_variants(d):
         url = pdf_url(tender_number, md)
-        result = http.probe_url(url, delay)
+        result = network.probe_url(url, delay)
         if result:
             suffix = "x" if result == "ok-x" else ""
             fname = f"Auctresults-{tender_number}{suffix}.pdf"
             label = f"{md.month:02d}{suffix}"
             print(f"OK ({label})", end=" ", flush=True)
             dl_url = url if result == "ok" else url.rsplit(".pdf", 1)[0] + "x.pdf"
-            if http.download_file(dl_url, output_dir / fname):
+            if network.download_file(dl_url, output_dir / fname):
                 print(f"-> {fname}")
                 return True
             return False
@@ -43,12 +43,15 @@ def fetch_tender(tender_number: int, output_dir: Path, delay: float) -> bool:
     return False
 
 
-def fetch_year(year: int, output_dir: Path, delay: float) -> int:
+def fetch_year(
+    year: int, output_dir: Path, delay: float, end_date: date | None = None
+) -> int:
     """Fetch all tenders for a given year. Returns count found."""
-    candidates = tender_range_for_year(year)
-    print(f"\n{'='*50}")
-    print(f"  GOG T-Bill results for {year}")
-    print(f"{'='*50}")
+    candidates = tender_range_for_year(year, end_date)
+    label = f" (up to {end_date})" if end_date else ""
+    print(f"\n{'=' * 50}")
+    print(f"  GOG T-Bill results for {year}{label}")
+    print(f"{'=' * 50}")
     print(f"  probing {len(candidates)} tenders ({candidates[0]}..{candidates[-1]})\n")
 
     found = 0
@@ -69,9 +72,22 @@ def main() -> None:
     )
     p.add_argument("--year", "-y", help="Year (2025) or range (2024-2026)")
     p.add_argument("--tender", "-t", type=int, help="Fetch a specific tender number")
-    p.add_argument("--output", "-o", default="downloads", help="Output dir (default: downloads)")
-    p.add_argument("--delay", "-d", type=float, default=0.5, help="Seconds between requests (default: 0.5)")
-    p.add_argument("-k", "--no-verify-ssl", action="store_true", help="Skip SSL certificate verification")
+    p.add_argument(
+        "--output", "-o", default="downloads", help="Output dir (default: downloads)"
+    )
+    p.add_argument(
+        "--delay",
+        "-d",
+        type=float,
+        default=0.5,
+        help="Seconds between requests (default: 0.5)",
+    )
+    p.add_argument(
+        "-k",
+        "--no-verify-ssl",
+        action="store_true",
+        help="Skip SSL certificate verification",
+    )
     args = p.parse_args()
 
     year = cast("str | None", args.year)
@@ -84,9 +100,7 @@ def main() -> None:
         p.error("specify --year or --tender")
 
     if no_verify_ssl:
-        http.verify_ssl = False
-        if not http.has_requests:
-            warnings.warn("SSL verification disabled")
+        network.verify_ssl = False
 
     out = Path(output)
     out.mkdir(parents=True, exist_ok=True)
@@ -97,7 +111,8 @@ def main() -> None:
         fetch_tender(tender, out, delay)
     elif year is not None and "-" in year:
         a, b = year.split("-", 1)
+        end = date.today()
         for y in range(int(a), int(b) + 1):
-            fetch_year(y, out, delay)
+            fetch_year(y, out, delay, end_date=end if y == int(b) else None)
     elif year is not None:
-        fetch_year(int(year), out, delay)
+        fetch_year(int(year), out, delay, end_date=date.today())

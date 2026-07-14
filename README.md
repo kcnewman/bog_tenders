@@ -24,7 +24,7 @@ python -m bog_tenders --year 2025
 ## Usage
 
 ```bash
-# all tenders for a year
+# all tenders for a year (stops at today's date)
 bog-tenders --year 2025
 
 # range of years
@@ -45,7 +45,7 @@ bog-tenders --year 2025 -o ./pdfs -k
 | `-t`, `--tender` | Fetch a specific tender number |
 | `-o`, `--output` | Output directory (default: `downloads`) |
 | `-d`, `--delay` | Seconds between requests (default: `0.5`) |
-| `-k`, `--no-verify-ssl` | Skip SSL certificate verification |
+| `-k`, `--no-verify-ssl` | Skip SSL certificate verification (on by default) |
 
 ## How it works
 

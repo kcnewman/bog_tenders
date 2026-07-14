@@ -15,13 +15,14 @@ except ImportError:
 
 try:
     import urllib3
+
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # type: ignore[union-attr]
 except ImportError:
     pass
 
 USER_AGENT = "Mozilla/5.0 (compatible; BOGFetch/1.0)"
 has_requests = _requests is not None
-verify_ssl = True  # module-level toggle, set by cli
+verify_ssl = False  # BOG's cert chain doesn't verify on many systems
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -38,12 +39,16 @@ def url_exists(url: str) -> bool:
         if has_requests:
             assert _requests is not None
             r = _requests.head(
-                url, timeout=10, allow_redirects=True,
-                headers={"User-Agent": USER_AGENT}, verify=verify_ssl,
+                url,
+                timeout=10,
+                allow_redirects=True,
+                headers={"User-Agent": USER_AGENT},
+                verify=verify_ssl,
             )
             return r.status_code == 200
-        req = urllib.request.Request(url, method="HEAD",
-                                     headers={"User-Agent": USER_AGENT})
+        req = urllib.request.Request(
+            url, method="HEAD", headers={"User-Agent": USER_AGENT}
+        )
         resp = urllib.request.urlopen(req, timeout=10, context=_ssl_context())
         return resp.status == 200
     except Exception:
@@ -56,8 +61,11 @@ def download_file(url: str, filepath: Path) -> bool:
         if has_requests:
             assert _requests is not None
             r = _requests.get(
-                url, timeout=30, stream=True,
-                headers={"User-Agent": USER_AGENT}, verify=verify_ssl,
+                url,
+                timeout=30,
+                stream=True,
+                headers={"User-Agent": USER_AGENT},
+                verify=verify_ssl,
             )
             if r.status_code != 200:
                 return False
