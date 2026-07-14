@@ -132,9 +132,7 @@ def main() -> None:
     pr.add_argument("tracker", type=Path, help="Output .xlsx file")
     pr.add_argument("paths", nargs="+", help="PDF files and/or directories")
     pr.add_argument(
-        "--recursive",
-        action="store_true",
-        help="Search directories recursively",
+        "--recursive", action="store_true", help="Search directories recursively"
     )
     pr.add_argument("-v", "--verbose", action="store_true", help="Debug output")
 

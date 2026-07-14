@@ -6,9 +6,11 @@ import argparse
 import sys
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
-from . import excel
-from .notice import AuctionRow, ParseError, parse_pdf
+import openpyxl
+
+from .notice import FIELD_NAMES, HEADERS, AuctionRow, ParseError, parse_pdf
 
 
 def discover_pdfs(paths: Iterable[str], recursive: bool = False) -> list[Path]:
@@ -38,6 +40,56 @@ def collect_rows(pdf_paths: list[Path]) -> list[AuctionRow]:
     return rows
 
 
+def _sort_key(row: AuctionRow) -> tuple[int, str]:
+    if row.tender_no is not None:
+        try:
+            return (int(row.tender_no), row.isin)
+        except (TypeError, ValueError):
+            pass
+    return (0, row.isin)
+
+
+def _read_existing_keys(ws: Any) -> set[tuple[str | None, str | None]]:
+    tender_col = FIELD_NAMES.index("tender_no") + 1
+    isin_col = FIELD_NAMES.index("isin") + 1
+    return {
+        (ws.cell(row=r, column=tender_col).value, ws.cell(row=r, column=isin_col).value)
+        for r in range(2, ws.max_row + 1)
+    }
+
+
+def _build(out_path: Path, rows: list[AuctionRow]) -> int:
+    rows = sorted(rows, key=_sort_key)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Auction Results"
+    ws.append(HEADERS)
+    for row in rows:
+        ws.append([getattr(row, name) for name in FIELD_NAMES])
+    wb.save(out_path)
+    print(f"wrote {len(rows)} rows to {out_path}")
+    return len(rows)
+
+
+def _append(out_path: Path, rows: list[AuctionRow]) -> int:
+    wb = openpyxl.load_workbook(out_path)
+    if "Auction Results" not in wb.sheetnames:
+        print(f"error: '{out_path}' has no 'Auction Results' sheet", file=sys.stderr)
+        return 0
+    ws = wb["Auction Results"]
+
+    existing_keys = _read_existing_keys(ws)
+    new_rows = sorted((r for r in rows if r.key not in existing_keys), key=_sort_key)
+    skipped = len(rows) - len(new_rows)
+
+    for row in new_rows:
+        ws.append([getattr(row, name) for name in FIELD_NAMES])
+
+    wb.save(out_path)
+    print(f"added {len(new_rows)} rows to {out_path} ({skipped} already present)")
+    return len(new_rows)
+
+
 def main(args: argparse.Namespace) -> None:
     pdf_paths = discover_pdfs(args.paths, recursive=args.recursive)
     if not pdf_paths:
@@ -47,12 +99,12 @@ def main(args: argparse.Namespace) -> None:
     rows = collect_rows(pdf_paths)
 
     if args.mode == "build":
-        n = excel.build(args.tracker, rows)
+        n = _build(args.tracker, rows)
         if not n:
             raise SystemExit(1)
     else:
         if not args.tracker.exists():
             print(f"{args.tracker} does not exist yet — building fresh")
-            excel.build(args.tracker, rows)
+            _build(args.tracker, rows)
         else:
-            excel.append(args.tracker, rows)
+            _append(args.tracker, rows)
