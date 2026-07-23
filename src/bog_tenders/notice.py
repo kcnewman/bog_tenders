@@ -13,9 +13,7 @@ _ALLOTTED = r"(?:(?:([\d.]+)\s*[–-]\s*([\d.]+))|([\d.]+))"
 ROW_RE = re.compile(
     r"(GHGGOGI?\d+)\s+(\d+\s*Day Bill)\s+"
     r"GH¢\s*([\d,]+(?:\.\d+)+)\s+GH¢\s*([\d,]+(?:\.\d+)+)\s+"
-    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+"
-    + _ALLOTTED + r"\s+"
-    + _ALLOTTED + r"\s+"
+    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+" + _ALLOTTED + r"\s+" + _ALLOTTED + r"\s+"
     r"([\d.]+)\s+([\d.]+)"
 )
 NOTICE_RE = re.compile(r"NOTICE TO BANKS AND PUBLIC NO\.\s*(\S+)")
@@ -30,8 +28,7 @@ TARGET_RE = re.compile(
 )
 
 
-class ParseError(Exception):
-    ...
+class ParseError(Exception): ...
 
 
 @dataclass
@@ -173,7 +170,5 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
     ]
 
     if len(rows) not in (2, 3):
-        raise ParseError(
-            f"expected 2 or 3 tenor rows, found {len(rows)}"
-        )
+        raise ParseError(f"expected 2 or 3 tenor rows, found {len(rows)}")
     return rows

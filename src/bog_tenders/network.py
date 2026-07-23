@@ -7,7 +7,6 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import requests
-
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -35,7 +34,9 @@ def month_variants(d: date) -> list[date]:
 
 
 def pdf_url(tender_number: int, d: date, suffix: str = "") -> str:
-    return f"{BASE_URL}/{d.year:04d}/{d.month:02d}/Auctresults-{tender_number}{suffix}.pdf"
+    return (
+        f"{BASE_URL}/{d.year:04d}/{d.month:02d}/Auctresults-{tender_number}{suffix}.pdf"
+    )
 
 
 def probe_urls_for_tender(tender_number: int, d: date) -> list[str]:
@@ -116,7 +117,9 @@ def extract_download_url(html: str) -> str | None:
             super().__init__()
             self.url: str | None = None
 
-        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        def handle_starttag(
+            self, tag: str, attrs: list[tuple[str, str | None]]
+        ) -> None:
             if tag != "a" or self.url is not None:
                 return
             attr_dict = dict(attrs)
