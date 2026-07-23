@@ -8,7 +8,7 @@ into structured Excel reports.
 ```bash
 git clone https://github.com/kcnewman/bog_tenders.git
 cd bog_tenders
-uv pip install -e .
+uv tool install .
 ```
 
 ## Usage
