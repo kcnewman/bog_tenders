@@ -11,7 +11,7 @@ from typing import cast
 
 from . import network
 from .tenders import tender_date, tender_range_for_year
-from .urls import month_variants, pdf_url
+from .urls import auction_page_url, month_variants, pdf_url
 
 
 def fetch_tender(tender_number: int, output_dir: Path, delay: float) -> bool:
@@ -40,7 +40,19 @@ def fetch_tender(tender_number: int, output_dir: Path, delay: float) -> bool:
                 return True
             return False
 
-    print("miss")
+    print("miss", end=" ", flush=True)
+
+    page_url = auction_page_url(tender_number)
+    html = network.fetch_page(page_url)
+    if html is not None:
+        dl_url = network.extract_download_url(html)
+        if dl_url:
+            print(f"scraping ({page_url})", end=" ", flush=True)
+            if network.download_file(dl_url, filepath):
+                print(f"-> {filename}")
+                return True
+
+    print("[not found]")
     return False
 
 
@@ -107,7 +119,10 @@ def main() -> None:
     dl.add_argument("--year", "-y", help="Year (2025) or range (2024-2026)")
     dl.add_argument("--tender", "-t", type=int, help="Fetch a specific tender number")
     dl.add_argument(
-        "--output", "-o", default="downloads", help="Output dir (default: downloads)"
+        "--output",
+        "-o",
+        default="auction reports",
+        help="Output dir (default: auction reports)",
     )
     dl.add_argument(
         "--delay",

@@ -7,6 +7,14 @@ from datetime import date
 BASE_URL = "https://www.bog.gov.gh/wp-content/uploads"
 
 
+def auction_page_url(tender_number: int) -> str:
+    """Return the auction results announcement page for a tender."""
+    return (
+        f"https://www.bog.gov.gh/gog_auction_results"
+        f"/results-of-gog-tender-{tender_number}/"
+    )
+
+
 def pdf_url(tender_number: int, d: date, suffix: str = "") -> str:
     """Build a PDF URL for a tender number and month."""
     return (
