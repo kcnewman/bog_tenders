@@ -1,25 +1,22 @@
-"""Auction notice PDF parsing."""
-
 from __future__ import annotations
 
 import re
 import sys
 from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import Any
 
 import pdfplumber
 
-# Each allotted column can be a range (low-high) or a single value when
-# all bids cleared at the same rate.
 _ALLOTTED = r"(?:(?:([\d.]+)\s*[–-]\s*([\d.]+))|([\d.]+))"
 
 ROW_RE = re.compile(
     r"(GHGGOGI?\d+)\s+(\d+\s*Day Bill)\s+"
     r"GH¢\s*([\d,]+(?:\.\d+)+)\s+GH¢\s*([\d,]+(?:\.\d+)+)\s+"
-    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+"  # Bid rate range (always a low-high pair)
-    + _ALLOTTED + r"\s+"              # Allotted discount (range or single)
-    + _ALLOTTED + r"\s+"              # Allotted interest  (range or single)
-    r"([\d.]+)\s+([\d.]+)"           # Weighted averages
+    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+"
+    + _ALLOTTED + r"\s+"
+    + _ALLOTTED + r"\s+"
+    r"([\d.]+)\s+([\d.]+)"
 )
 NOTICE_RE = re.compile(r"NOTICE TO BANKS AND PUBLIC NO\.\s*(\S+)")
 TENDER_RE = re.compile(
@@ -32,8 +29,9 @@ TARGET_RE = re.compile(
     r"\s+T/BILLS:\s*GH¢\s*([\d,]+(?:\.\d+)?)\s*Million"
 )
 
+
 class ParseError(Exception):
-    """Raised when a PDF doesn't match the expected notice layout."""
+    ...
 
 
 @dataclass
@@ -54,7 +52,7 @@ class AuctionRow:
     allotted_interest_high: float
     weighted_avg_discount: float
     weighted_avg_interest: float
-    target_next_tender_ghs_m: float | None
+    target_ghs_m: float | None
 
     @property
     def key(self) -> tuple[str | None, str]:
@@ -79,8 +77,28 @@ HEADERS = [
     "Allotted Interest High (%)",
     "Weighted Avg Discount (%)",
     "Weighted Avg Interest (%)",
-    "Target Next Tender (GH¢M)",
+    "Target (GH¢M)",
 ]
+
+
+def _extract_target_amount(chars: list[dict[str, Any]]) -> float | None:
+    lines: dict[float, list[tuple[float, str]]] = {}
+    for c in chars:
+        top = round(c["top"])
+        lines.setdefault(top, []).append((c["x0"], c["text"]))
+    line_strings: dict[float, str] = {}
+    for top in lines:
+        items = sorted(lines[top], key=lambda x: x[0])
+        line_strings[top] = "".join(item[1] for item in items)
+    target_tops = [top for top, text in line_strings.items() if "TARGET FOR 91" in text]
+    if not target_tops:
+        return None
+    target_top = target_tops[0]
+    nearby = [c for c in chars if abs(round(c["top"]) - target_top) <= 1]
+    merged = sorted(nearby, key=lambda c: (c["x0"], c["top"]))
+    text = "".join(str(c["text"]) for c in merged)
+    m = re.search(r"T/BILLS:.*?([\d,]+\.\d+)\s*Million", text)
+    return _to_float(m.group(1)) if m else None
 
 
 def _to_float(s: str) -> float:
@@ -94,7 +112,9 @@ def _to_float(s: str) -> float:
 def parse_pdf(path: Path) -> list[AuctionRow]:
     try:
         with pdfplumber.open(path) as pdf:
-            text = pdf.pages[0].extract_text() or ""
+            page = pdf.pages[0]
+            text = page.extract_text() or ""
+            chars = page.chars
     except Exception as exc:
         raise ParseError(f"could not read PDF ({exc})") from exc
 
@@ -116,7 +136,10 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
     issue_date = (
         f"{issue_m.group(1)} {issue_m.group(2)} {issue_m.group(3)}" if issue_m else None
     )
-    target = _to_float(target_m.group(1)) if target_m else None
+    if target_m:
+        target = _to_float(target_m.group(1))
+    else:
+        target = _extract_target_amount(chars)
 
     def _range_or_single(
         m: re.Match[str], low_idx: int, high_idx: int, single_idx: int
@@ -144,7 +167,7 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
             allotted_interest_high=_range_or_single(m, 10, 11, 12)[1],
             weighted_avg_discount=_to_float(m.group(13)),
             weighted_avg_interest=_to_float(m.group(14)),
-            target_next_tender_ghs_m=target,
+            target_ghs_m=target,
         )
         for m in ROW_RE.finditer(text)
     ]
