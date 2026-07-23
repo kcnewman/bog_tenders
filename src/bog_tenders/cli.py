@@ -4,65 +4,87 @@ from __future__ import annotations
 
 import argparse
 import sys
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
 from typing import cast
 
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskID,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+from rich.text import Text
+
 from . import network
 from .tenders import tender_date, tender_range_for_year
-from .urls import month_variants, pdf_url
+from .urls import auction_page_url, probe_urls_for_tender
+
+console = Console()
 
 
-def fetch_tender(tender_number: int, output_dir: Path, delay: float) -> bool:
+def fetch_tender(tender_number: int, output_dir: Path) -> bool:
     """Probe for a single tender PDF and download it. Returns True if found."""
     d = tender_date(tender_number)
     filename = f"Auctresults-{tender_number}.pdf"
     filepath = output_dir / filename
 
     if filepath.exists():
-        print(f"  {tender_number:>5}  {d}  [exists]")
         return True
 
-    print(f"  {tender_number:>5}  {d}  probing...", end=" ", flush=True)
+    pdf_urls = probe_urls_for_tender(tender_number, d)
+    hit = network.probe_urls(pdf_urls)
+    if hit and network.download_file(hit, filepath):
+        return True
 
-    for md in month_variants(d):
-        url = pdf_url(tender_number, md)
-        result = network.probe_url(url, delay)
-        if result:
-            suffix = "x" if result == "ok-x" else ""
-            fname = f"Auctresults-{tender_number}{suffix}.pdf"
-            label = f"{md.month:02d}{suffix}"
-            print(f"OK ({label})", end=" ", flush=True)
-            dl_url = url if result == "ok" else url.rsplit(".pdf", 1)[0] + "x.pdf"
-            if network.download_file(dl_url, output_dir / fname):
-                print(f"-> {fname}")
-                return True
-            return False
+    page_url = auction_page_url(tender_number)
+    html = network.fetch_page(page_url)
+    if html:
+        dl_url = network.extract_download_url(html)
+        if dl_url and network.download_file(dl_url, filepath):
+            return True
 
-    print("miss")
     return False
 
 
 def fetch_year(
-    year: int, output_dir: Path, delay: float, end_date: date | None = None
+    year: int,
+    output_dir: Path,
+    workers: int,
+    end_date: date | None = None,
+    progress: Progress | None = None,
+    task_id: TaskID | None = None,
 ) -> int:
     """Fetch all tenders for a given year. Returns count found."""
     candidates = tender_range_for_year(year, end_date)
-    label = f" (up to {end_date})" if end_date else ""
-    print(f"\n{'=' * 50}")
-    print(f"  GOG T-Bill results for {year}{label}")
-    print(f"{'=' * 50}")
-    print(f"  probing {len(candidates)} tenders ({candidates[0]}..{candidates[-1]})\n")
+    if not candidates:
+        return 0
 
     found = 0
-    for n in candidates:
-        if fetch_tender(n, output_dir, delay):
-            found += 1
-        time.sleep(delay)
+    missed: list[int] = []
 
-    missed = len(candidates) - found
-    print(f"\n  {year}: {found} found, {missed} not found")
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        fut_to_n = {ex.submit(fetch_tender, n, output_dir): n for n in candidates}
+        for fut in as_completed(fut_to_n):
+            n = fut_to_n[fut]
+            if fut.result():
+                found += 1
+            else:
+                missed.append(n)
+            if progress is not None and task_id is not None:
+                progress.update(task_id, advance=1)
+
+    if missed:
+        console.log(
+            f"[yellow]not found:[/] {', '.join(str(n) for n in missed)}",
+            _stack_offset=2,
+        )
+
     return found
 
 
@@ -70,11 +92,11 @@ def _run_download(args: argparse.Namespace) -> None:
     year = cast("str | None", args.year)
     tender = cast("int | None", args.tender)
     output = cast("str", args.output)
-    delay = cast("float", args.delay)
+    workers = cast("int", args.workers)
     no_verify_ssl = cast("bool", args.no_verify_ssl)
 
     if not year and not tender:
-        print("error: specify --year or --tender", file=sys.stderr)
+        console.print("[red]error:[/] specify --year or --tender")
         raise SystemExit(1)
 
     if no_verify_ssl:
@@ -85,15 +107,56 @@ def _run_download(args: argparse.Namespace) -> None:
 
     if tender is not None:
         d = tender_date(tender)
-        print(f"Fetching tender {tender} ({d})...")
-        fetch_tender(tender, out, delay)
-    elif year is not None and "-" in year:
-        a, b = year.split("-", 1)
+        ok = fetch_tender(tender, out)
+        label = Text("YES", style="green") if ok else Text("NO", style="red")
+        console.print(f"  {tender}  ({d}) — {label}")
+
+    else:
+        years: list[int] = []
         end = date.today()
-        for y in range(int(a), int(b) + 1):
-            fetch_year(y, out, delay, end_date=end if y == int(b) else None)
-    elif year is not None:
-        fetch_year(int(year), out, delay, end_date=date.today())
+        if "-" in cast(str, year):
+            a, b = cast(str, year).split("-", 1)
+            years = list(range(int(a), int(b) + 1))
+        else:
+            years = [int(cast(str, year))]
+
+        total_found = 0
+        total_count = 0
+
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            for y in years:
+                candidates = tender_range_for_year(y, end if y == years[-1] else None)
+                label = f"  {y}" if len(years) == 1 else f"  {y}"
+                task = progress.add_task(label, total=len(candidates))
+                found = fetch_year(
+                    y,
+                    out,
+                    workers,
+                    end_date=end if y == years[-1] else None,
+                    progress=progress,
+                    task_id=task,
+                )
+                total_found += found
+                total_count += len(candidates)
+
+        table = Table.grid(padding=(0, 2))
+        table.add_column()
+        table.add_column(justify="right")
+        table.add_column(style="dim")
+        table.add_row(
+            Text.assemble(("Total", "bold"), " tenders"),
+            str(total_count),
+            f"({total_found} found, {total_count - total_found} missed)",
+        )
+        console.print()
+        console.print(table)
 
 
 def main() -> None:
@@ -107,14 +170,17 @@ def main() -> None:
     dl.add_argument("--year", "-y", help="Year (2025) or range (2024-2026)")
     dl.add_argument("--tender", "-t", type=int, help="Fetch a specific tender number")
     dl.add_argument(
-        "--output", "-o", default="downloads", help="Output dir (default: downloads)"
+        "--output",
+        "-o",
+        default="auction reports",
+        help="Output dir (default: auction reports)",
     )
     dl.add_argument(
-        "--delay",
-        "-d",
-        type=float,
-        default=0.5,
-        help="Seconds between requests (default: 0.5)",
+        "--workers",
+        "-w",
+        type=int,
+        default=6,
+        help="Concurrent downloads (default: 6)",
     )
     dl.add_argument(
         "-k",
