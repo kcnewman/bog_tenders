@@ -6,6 +6,8 @@ into structured Excel reports.
 ## Install
 
 ```bash
+git clone https://github.com/kcnewman/bog_tenders.git
+cd bog_tenders
 pip install -e .
 ```
 
