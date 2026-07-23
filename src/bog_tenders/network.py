@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import ssl
 import sys
-import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import override
 
 try:
     import requests as _requests
@@ -93,11 +92,23 @@ def probe_url(url: str, delay: float) -> str | None:
     """Check a URL, then its x-suffix variant. Return 'ok', 'ok-x', or None."""
     if url_exists(url):
         return "ok"
+    import time
     time.sleep(delay)
     url_x = url.rsplit(".pdf", 1)[0] + "x.pdf"
     if url_exists(url_x):
         return "ok-x"
     time.sleep(delay)
+    return None
+
+
+def probe_urls(urls: list[str], max_workers: int = 8) -> str | None:
+    if not urls:
+        return None
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(urls))) as ex:
+        fut_to_url = {ex.submit(url_exists, url): url for url in urls}
+        for fut in as_completed(fut_to_url):
+            if fut.result():
+                return fut_to_url[fut]
     return None
 
 
@@ -134,10 +145,7 @@ def extract_download_url(html: str) -> str | None:
             super().__init__()
             self.url: str | None = None
 
-        @override
-        def handle_starttag(
-            self, tag: str, attrs: list[tuple[str, str | None]]
-        ) -> None:
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
             if tag != "a" or self.url is not None:
                 return
             attr_dict = dict(attrs)
