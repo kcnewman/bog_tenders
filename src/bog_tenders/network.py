@@ -1,104 +1,87 @@
-"""HTTP operations: probe, download, SSL config."""
-
 from __future__ import annotations
 
-import ssl
 import sys
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from html.parser import HTMLParser
 from pathlib import Path
 
-try:
-    import requests as _requests
-except ImportError:
-    _requests = None  # type: ignore[assignment]
+import requests
 
-try:
-    import urllib3
+import urllib3
 
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)  # type: ignore[union-attr]
-except ImportError:
-    pass
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 USER_AGENT = "Mozilla/5.0 (compatible; BOGFetch/1.0)"
-has_requests = _requests is not None
-verify_ssl = False  # BOG's cert chain doesn't verify on many systems
+verify_ssl = False
+
+BASE_URL = "https://www.bog.gov.gh/wp-content/uploads"
+AUCTION_PAGE = "https://www.bog.gov.gh/gog_auction_results"
 
 
-def _ssl_context() -> ssl.SSLContext:
-    ctx = ssl.create_default_context()
-    if not verify_ssl:
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-    return ctx
+def month_variants(d: date) -> list[date]:
+    y, m = d.year, d.month
+    variants: list[date] = []
+    for dm in (0, -1, 1):
+        nm = m + dm
+        if nm < 1 or nm > 12:
+            continue
+        if dm == -1 and d.day > 3:
+            continue
+        if dm == 1 and d.day < 29:
+            continue
+        variants.append(date(y, nm, 1))
+    return variants
+
+
+def pdf_url(tender_number: int, d: date, suffix: str = "") -> str:
+    return f"{BASE_URL}/{d.year:04d}/{d.month:02d}/Auctresults-{tender_number}{suffix}.pdf"
+
+
+def probe_urls_for_tender(tender_number: int, d: date) -> list[str]:
+    urls: list[str] = []
+    for md in month_variants(d):
+        urls.append(pdf_url(tender_number, md))
+        urls.append(pdf_url(tender_number, md, suffix="x"))
+    return urls
+
+
+def auction_page_url(tender_number: int) -> str:
+    return f"{AUCTION_PAGE}/results-of-gog-tender-{tender_number}/"
 
 
 def url_exists(url: str) -> bool:
-    """HEAD request — returns True if server responds 200."""
     try:
-        if has_requests:
-            assert _requests is not None
-            r = _requests.head(
-                url,
-                timeout=10,
-                allow_redirects=True,
-                headers={"User-Agent": USER_AGENT},
-                verify=verify_ssl,
-            )
-            return r.status_code == 200
-        req = urllib.request.Request(
-            url, method="HEAD", headers={"User-Agent": USER_AGENT}
+        r = requests.head(
+            url,
+            timeout=10,
+            allow_redirects=True,
+            headers={"User-Agent": USER_AGENT},
+            verify=verify_ssl,
         )
-        resp = urllib.request.urlopen(req, timeout=10, context=_ssl_context())
-        return resp.status == 200
+        return r.status_code == 200
     except Exception:
         return False
 
 
 def download_file(url: str, filepath: Path) -> bool:
-    """Download a file to disk. Returns True on success."""
     try:
-        if has_requests:
-            assert _requests is not None
-            r = _requests.get(
-                url,
-                timeout=30,
-                stream=True,
-                headers={"User-Agent": USER_AGENT},
-                verify=verify_ssl,
-            )
-            if r.status_code != 200:
-                return False
-            with open(filepath, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            return True
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        resp = urllib.request.urlopen(req, timeout=30, context=_ssl_context())
+        r = requests.get(
+            url,
+            timeout=30,
+            stream=True,
+            headers={"User-Agent": USER_AGENT},
+            verify=verify_ssl,
+        )
+        if r.status_code != 200:
+            return False
         with open(filepath, "wb") as f:
-            while True:
-                chunk = resp.read(8192)
-                if not chunk:
-                    break
+            for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
         return True
     except Exception as e:
         print(f"    download error: {e}", file=sys.stderr)
         return False
-
-
-def probe_url(url: str, delay: float) -> str | None:
-    """Check a URL, then its x-suffix variant. Return 'ok', 'ok-x', or None."""
-    if url_exists(url):
-        return "ok"
-    import time
-    time.sleep(delay)
-    url_x = url.rsplit(".pdf", 1)[0] + "x.pdf"
-    if url_exists(url_x):
-        return "ok-x"
-    time.sleep(delay)
-    return None
 
 
 def probe_urls(urls: list[str], max_workers: int = 8) -> str | None:
@@ -113,33 +96,21 @@ def probe_urls(urls: list[str], max_workers: int = 8) -> str | None:
 
 
 def fetch_page(url: str) -> str | None:
-    """GET a URL and return its text content. Returns None on failure."""
     try:
-        if has_requests:
-            assert _requests is not None
-            r = _requests.get(
-                url,
-                timeout=30,
-                headers={"User-Agent": USER_AGENT},
-                verify=verify_ssl,
-            )
-            if r.status_code == 200:
-                return r.text
-            return None
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        resp = urllib.request.urlopen(req, timeout=30, context=_ssl_context())
-        return resp.read().decode("utf-8")
+        r = requests.get(
+            url,
+            timeout=30,
+            headers={"User-Agent": USER_AGENT},
+            verify=verify_ssl,
+        )
+        if r.status_code == 200:
+            return r.text
+        return None
     except Exception:
         return None
 
 
 def extract_download_url(html: str) -> str | None:
-    """Find the download link in an auction results page.
-
-    Looks for an <a> tag whose class contains 'jet-button__instance'
-    and returns its href attribute.
-    """
-
     class _LinkFinder(HTMLParser):
         def __init__(self) -> None:
             super().__init__()
