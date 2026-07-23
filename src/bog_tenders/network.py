@@ -8,6 +8,7 @@ import time
 import urllib.request
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import override
 
 try:
     import requests as _requests
@@ -133,7 +134,10 @@ def extract_download_url(html: str) -> str | None:
             super().__init__()
             self.url: str | None = None
 
-        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        @override
+        def handle_starttag(
+            self, tag: str, attrs: list[tuple[str, str | None]]
+        ) -> None:
             if tag != "a" or self.url is not None:
                 return
             attr_dict = dict(attrs)
