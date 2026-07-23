@@ -9,13 +9,17 @@ from pathlib import Path
 
 import pdfplumber
 
+# Each allotted column can be a range (low-high) or a single value when
+# all bids cleared at the same rate.
+_ALLOTTED = r"(?:(?:([\d.]+)\s*[–-]\s*([\d.]+))|([\d.]+))"
+
 ROW_RE = re.compile(
-    r"(GHGGOGI\d+)\s+(\d+\s*Day Bill)\s+"
-    r"GH¢\s*([\d,]+\.\d+)\s+GH¢\s*([\d,]+\.\d+)\s+"
-    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+"
-    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+"
-    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+"
-    r"([\d.]+)\s+([\d.]+)"
+    r"(GHGGOGI?\d+)\s+(\d+\s*Day Bill)\s+"
+    r"GH¢\s*([\d,]+(?:\.\d+)+)\s+GH¢\s*([\d,]+(?:\.\d+)+)\s+"
+    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+"  # Bid rate range (always a low-high pair)
+    + _ALLOTTED + r"\s+"              # Allotted discount (range or single)
+    + _ALLOTTED + r"\s+"              # Allotted interest  (range or single)
+    r"([\d.]+)\s+([\d.]+)"           # Weighted averages
 )
 NOTICE_RE = re.compile(r"NOTICE TO BANKS AND PUBLIC NO\.\s*(\S+)")
 TENDER_RE = re.compile(
@@ -23,11 +27,10 @@ TENDER_RE = re.compile(
 )
 ISSUE_RE = re.compile(r"SECURITIES TO BE ISSUED ON\s*(\d+)\w*\s+(\w+)\.?\s+(\d{4})")
 TARGET_RE = re.compile(
-    r"TARGET FOR 91,\s*182 AND 364-DAY T/BILLS:\s*GH¢\s*([\d,]+\.\d+)\s*Million"
+    r"TARGET FOR 91"
+    r"(?:,\s*182\s+AND\s+364-DAY| AND 182-DAY)"
+    r"\s+T/BILLS:\s*GH¢\s*([\d,]+(?:\.\d+)?)\s*Million"
 )
-
-EXPECTED_TENORS = 3
-
 
 class ParseError(Exception):
     """Raised when a PDF doesn't match the expected notice layout."""
@@ -81,7 +84,11 @@ HEADERS = [
 
 
 def _to_float(s: str) -> float:
-    return float(s.rstrip(".").replace(",", ""))
+    s = s.rstrip(".").replace(",", "")
+    parts = s.split(".")
+    if len(parts) > 2:
+        s = "".join(parts[:-1]) + "." + parts[-1]
+    return float(s)
 
 
 def parse_pdf(path: Path) -> list[AuctionRow]:
@@ -111,6 +118,14 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
     )
     target = _to_float(target_m.group(1)) if target_m else None
 
+    def _range_or_single(
+        m: re.Match[str], low_idx: int, high_idx: int, single_idx: int
+    ) -> tuple[float, float]:
+        if m.group(single_idx) is not None:
+            v = _to_float(m.group(single_idx))
+            return v, v
+        return _to_float(m.group(low_idx)), _to_float(m.group(high_idx))
+
     rows = [
         AuctionRow(
             notice_no=notice_no,
@@ -123,17 +138,19 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
             bids_accepted_ghs_m=_to_float(m.group(4)),
             bid_rate_range_low=_to_float(m.group(5)),
             bid_rate_range_high=_to_float(m.group(6)),
-            allotted_discount_low=_to_float(m.group(7)),
-            allotted_discount_high=_to_float(m.group(8)),
-            allotted_interest_low=_to_float(m.group(9)),
-            allotted_interest_high=_to_float(m.group(10)),
-            weighted_avg_discount=_to_float(m.group(11)),
-            weighted_avg_interest=_to_float(m.group(12)),
+            allotted_discount_low=_range_or_single(m, 7, 8, 9)[0],
+            allotted_discount_high=_range_or_single(m, 7, 8, 9)[1],
+            allotted_interest_low=_range_or_single(m, 10, 11, 12)[0],
+            allotted_interest_high=_range_or_single(m, 10, 11, 12)[1],
+            weighted_avg_discount=_to_float(m.group(13)),
+            weighted_avg_interest=_to_float(m.group(14)),
             target_next_tender_ghs_m=target,
         )
         for m in ROW_RE.finditer(text)
     ]
 
-    if len(rows) != EXPECTED_TENORS:
-        raise ParseError(f"expected {EXPECTED_TENORS} tenor rows, found {len(rows)}")
+    if len(rows) not in (2, 3):
+        raise ParseError(
+            f"expected 2 or 3 tenor rows, found {len(rows)}"
+        )
     return rows
