@@ -9,8 +9,12 @@ from pathlib import Path
 from typing import Any
 
 import openpyxl
+from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskID, TaskProgressColumn, TextColumn, TimeElapsedColumn
 
 from .notice import FIELD_NAMES, HEADERS, AuctionRow, ParseError, parse_pdf
+
+console = Console()
 
 
 def discover_pdfs(paths: Iterable[str], recursive: bool = False) -> list[Path]:
@@ -30,13 +34,17 @@ def discover_pdfs(paths: Iterable[str], recursive: bool = False) -> list[Path]:
     return sorted(found)
 
 
-def collect_rows(pdf_paths: list[Path]) -> list[AuctionRow]:
+def collect_rows(pdf_paths: list[Path],
+                 progress: Progress | None = None,
+                 task_id: TaskID | None = None) -> list[AuctionRow]:
     rows: list[AuctionRow] = []
     for path in pdf_paths:
         try:
             rows.extend(parse_pdf(path))
         except ParseError as exc:
             print(f"warning: {path.name}: skipped — {exc}", file=sys.stderr)
+        if progress is not None and task_id is not None:
+            progress.update(task_id, advance=1)
     return rows
 
 
@@ -96,7 +104,14 @@ def main(args: argparse.Namespace) -> None:
         print("error: no PDF files found in the given paths", file=sys.stderr)
         raise SystemExit(1)
 
-    rows = collect_rows(pdf_paths)
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(), TaskProgressColumn(),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(), console=console,
+    ) as progress:
+        task = progress.add_task("  Parsing PDFs", total=len(pdf_paths))
+        rows = collect_rows(pdf_paths, progress=progress, task_id=task)
 
     if args.mode == "build":
         n = _build(args.tracker, rows)
