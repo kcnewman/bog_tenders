@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rich.progress import Progress, TaskID
 
-from . import console, network
+from . import network
 from .dates import tender_date, tender_range_for_year
 
 
@@ -33,10 +33,10 @@ def fetch_year(
     end_date: date | None = None,
     progress: Progress | None = None,
     task_id: TaskID | None = None,
-) -> tuple[int, int]:
+) -> tuple[int, int, list[int]]:
     candidates = tender_range_for_year(year, end_date)
     if not candidates:
-        return 0, 0
+        return 0, 0, []
     if progress is not None and task_id is not None:
         progress.update(task_id, total=len(candidates))
     found = 0
@@ -51,9 +51,4 @@ def fetch_year(
                 missed.append(n)
             if progress is not None and task_id is not None:
                 progress.update(task_id, advance=1)
-    if missed:
-        console.log(
-            f"[yellow]not found:[/] {', '.join(str(n) for n in missed)}",
-            _stack_offset=2,
-        )
-    return found, len(candidates)
+    return found, len(candidates), missed

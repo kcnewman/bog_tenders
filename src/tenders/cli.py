@@ -39,11 +39,12 @@ def _run_download(args: argparse.Namespace) -> None:
             years = [int(year)]
         total_found = 0
         total_count = 0
+        missed_by_year: dict[int, list[int]] = {}
         with make_progress() as progress:
             for y in years:
                 candidates_end = end if y == years[-1] else None
                 task = progress.add_task(f"  {y}", total=0)
-                found, total = fetch_year(
+                found, total, missed = fetch_year(
                     y,
                     out,
                     workers,
@@ -53,6 +54,9 @@ def _run_download(args: argparse.Namespace) -> None:
                 )
                 total_found += found
                 total_count += total
+                if missed:
+                    missed_by_year[y] = missed
+        console.clear()
         table = Table(show_header=False, box=None, padding=(0, 2))
         table.add_column()
         table.add_column(justify="right")
@@ -62,7 +66,12 @@ def _run_download(args: argparse.Namespace) -> None:
             str(total_count),
             f"({total_found} found, {total_count - total_found} missed)",
         )
-        console.print()
+        if missed_by_year:
+            table.add_section()
+            for y in years:
+                m = missed_by_year.get(y)
+                if m:
+                    table.add_row(f"  {y}", "", ", ".join(str(n) for n in sorted(m)))
         console.print(table)
 
 

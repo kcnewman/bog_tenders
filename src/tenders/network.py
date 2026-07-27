@@ -6,7 +6,9 @@ from datetime import date
 from html.parser import HTMLParser
 from pathlib import Path
 
+import threading
 import requests
+from requests.adapters import HTTPAdapter
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -16,6 +18,20 @@ verify_ssl = False
 
 BASE_URL = "https://www.bog.gov.gh/wp-content/uploads"
 AUCTION_PAGE = "https://www.bog.gov.gh/gog_auction_results"
+
+_thread_local = threading.local()
+
+
+def _get_session() -> requests.Session:
+    session = getattr(_thread_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        session.headers.update({"User-Agent": USER_AGENT})
+        session.verify = verify_ssl
+        adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20)
+        session.mount("https://", adapter)
+        _thread_local.session = session
+    return session
 
 
 def month_variants(d: date) -> list[date]:
@@ -53,13 +69,7 @@ def auction_page_url(tender_number: int) -> str:
 
 def url_exists(url: str) -> bool:
     try:
-        r = requests.head(
-            url,
-            timeout=10,
-            allow_redirects=True,
-            headers={"User-Agent": USER_AGENT},
-            verify=verify_ssl,
-        )
+        r = _get_session().head(url, timeout=10, allow_redirects=True)
         return r.status_code == 200
     except Exception:
         return False
@@ -67,13 +77,7 @@ def url_exists(url: str) -> bool:
 
 def download_file(url: str, filepath: Path) -> bool:
     try:
-        r = requests.get(
-            url,
-            timeout=30,
-            stream=True,
-            headers={"User-Agent": USER_AGENT},
-            verify=verify_ssl,
-        )
+        r = _get_session().get(url, timeout=30, stream=True)
         if r.status_code != 200:
             return False
         with open(filepath, "wb") as f:
@@ -98,12 +102,7 @@ def probe_urls(urls: list[str], max_workers: int = 8) -> str | None:
 
 def fetch_page(url: str) -> str | None:
     try:
-        r = requests.get(
-            url,
-            timeout=30,
-            headers={"User-Agent": USER_AGENT},
-            verify=verify_ssl,
-        )
+        r = _get_session().get(url, timeout=30)
         if r.status_code == 200:
             return r.text
         return None
