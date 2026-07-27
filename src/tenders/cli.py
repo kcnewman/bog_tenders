@@ -169,7 +169,7 @@ def main() -> None:
     if args.command == "download":
         _run_download(args)
     elif args.command == "parse":
-        from .parse import main as parse_main
+        from .excel import main as parse_main
 
         parse_main(args)
     else:
