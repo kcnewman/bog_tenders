@@ -106,9 +106,10 @@ def _clean_text(text: str) -> str:
     text = re.sub(r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)", r"\1\2-\2", text)
     text = re.sub(r"T\s*/\s*B\s*I\s*L\s*L", "T/BILL", text)
     text = re.sub(r"G\s*H\s*¢", "GH¢", text)
-    text = re.sub(r"\bD\s+A\s+Y\b", "DAY", text)
-    text = re.sub(r"\bM\s*i\s*l\s*l\s*i\s*o\s*n\b", "Million", text)
-    text = re.sub(r"\bA\s+N\s+D\b", "AND", text)
+    text = re.sub(r"T\s*A\s*R\s*G\s*E\s*T", "TARGET", text)
+    text = re.sub(r"D\s+A\s+Y", "DAY", text)
+    text = re.sub(r"M\s*i\s*l\s*l\s*i\s*o\s*n", "Million", text)
+    text = re.sub(r"A\s+N\s+D", "AND", text)
     return text
 
 
@@ -124,11 +125,13 @@ def _extract_target(chars: list[dict[str, Any]]) -> float | None:
         m = re.search(r"GH¢\s*([\d,]+(?:\.\d+)?)", line)
         if m:
             return _to_float(m.group(1))
-        if i + 1 < len(sorted_tops):
-            next_line = "".join(t for _, t in sorted(by_top[sorted_tops[i + 1]], key=lambda x: x[0]))
-            m = re.search(r"GH¢\s*([\d,]+(?:\.\d+)?)", next_line)
-            if m:
-                return _to_float(m.group(1))
+        for offset in (-1, 1):
+            j = i + offset
+            if 0 <= j < len(sorted_tops):
+                adj = "".join(t for _, t in sorted(by_top[sorted_tops[j]], key=lambda x: x[0]))
+                m = re.search(r"GH¢\s*([\d,]+(?:\.\d+)?)", adj)
+                if m:
+                    return _to_float(m.group(1))
     return None
 
 
