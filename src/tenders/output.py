@@ -4,31 +4,24 @@ import csv
 import json
 from pathlib import Path
 
-from .notice import FIELD_NAMES, HEADERS, AuctionRow
+from .notice import FIELD_NAMES, HEADERS, AuctionRow, row_sort_key
+
+
+def _sorted_data(rows: list[AuctionRow]) -> list[dict[str, object]]:
+    return [{n: getattr(r, n) for n in FIELD_NAMES}
+            for r in sorted(rows, key=row_sort_key)]
 
 
 def write_csv(path: Path, rows: list[AuctionRow]) -> int:
-    rows = sorted(rows, key=_sort_key)
+    data = _sorted_data(rows)
     with open(path, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(HEADERS)
-        for row in rows:
-            w.writerow(getattr(row, name) for name in FIELD_NAMES)
+        w = csv.DictWriter(f, fieldnames=FIELD_NAMES)
+        w.writeheader()
+        w.writerows(data)
     return len(rows)
 
 
 def write_json(path: Path, rows: list[AuctionRow]) -> int:
-    rows = sorted(rows, key=_sort_key)
-    data = [{name: getattr(r, name) for name in FIELD_NAMES} for r in rows]
     with open(path, "w") as f:
-        json.dump(data, f, indent=2, default=str)
+        json.dump(_sorted_data(rows), f, indent=2, default=str)
     return len(rows)
-
-
-def _sort_key(row: AuctionRow) -> tuple[int, str]:
-    if row.tender_no is not None:
-        try:
-            return (int(row.tender_no), row.isin)
-        except (TypeError, ValueError):
-            pass
-    return (0, row.isin)

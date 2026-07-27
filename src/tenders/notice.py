@@ -62,39 +62,26 @@ class AuctionRow:
 
 
 FIELD_NAMES = [f.name for f in fields(AuctionRow)]
+
+
+def row_sort_key(row: AuctionRow) -> tuple[int, str]:
+    if row.tender_no is not None:
+        try:
+            return (int(row.tender_no), row.isin)
+        except (TypeError, ValueError):
+            pass
+    return (0, row.isin)
+
+
 HEADERS = [
-    "Notice No",
-    "Tender No",
-    "Tender Date",
-    "Issue Date",
-    "ISIN",
-    "Tenor",
-    "Bids Tendered (GH¢M)",
-    "Bids Accepted (GH¢M)",
-    "Bid Rate Range Low (%)",
-    "Bid Rate Range High (%)",
-    "Allotted Discount Low (%)",
-    "Allotted Discount High (%)",
-    "Allotted Interest Low (%)",
-    "Allotted Interest High (%)",
-    "Weighted Avg Discount (%)",
-    "Weighted Avg Interest (%)",
+    "Notice No", "Tender No", "Tender Date", "Issue Date", "ISIN", "Tenor",
+    "Bids Tendered (GH¢M)", "Bids Accepted (GH¢M)",
+    "Bid Rate Range Low (%)", "Bid Rate Range High (%)",
+    "Allotted Discount Low (%)", "Allotted Discount High (%)",
+    "Allotted Interest Low (%)", "Allotted Interest High (%)",
+    "Weighted Avg Discount (%)", "Weighted Avg Interest (%)",
     "Target (GH¢M)",
 ]
-
-
-def _extract_target_amount(chars: list[dict[str, Any]]) -> float | None:
-    by_top: dict[int, list[tuple[float, str]]] = {}
-    for c in chars:
-        by_top.setdefault(round(c["top"]), []).append((c["x0"], c["text"]))
-    for top in sorted(by_top):
-        items = sorted(by_top[top], key=lambda x: x[0])
-        line = "".join(text for _, text in items)
-        if "TARGET FOR 91" in line:
-            m = re.search(r"T/BILLS:.*?([\d,]+\.\d+)\s*Million", line)
-            if m:
-                return _to_float(m.group(1))
-    return None
 
 
 def _to_float(s: str) -> float:
@@ -110,22 +97,37 @@ def _clean_text(text: str) -> str:
     text = re.sub(r"(?<=\d)-\s+(?=\d)", "-", text)
     text = re.sub(
         r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)",
-        r"\1\2-\2",
-        text,
+        r"\1\2-\2", text,
     )
     return text
 
 
-def _fix_wa_if_from_range(
-    row: AuctionRow, m: re.Match[str], combined: str, line: str
-) -> None:
+def _extract_target(chars: list[dict[str, Any]]) -> float | None:
+    by_top: dict[int, list[tuple[float, str]]] = {}
+    for c in chars:
+        by_top.setdefault(round(c["top"]), []).append((c["x0"], c["text"]))
+    for top in sorted(by_top):
+        line = "".join(text for _, text in sorted(by_top[top], key=lambda x: x[0]))
+        if "TARGET FOR 91" in line:
+            m = re.search(r"T/BILLS:.*?([\d,]+\.\d+)\s*Million", line)
+            if m:
+                return _to_float(m.group(1))
+    return None
+
+
+def _range_or_single(m: re.Match[str], lo: int, hi: int, si: int) -> tuple[float, float]:
+    if m.group(si) is not None:
+        v = _to_float(m.group(si))
+        return v, v
+    return _to_float(m.group(lo)), _to_float(m.group(hi))
+
+
+def _fix_wa(row: AuctionRow, m: re.Match[str], combined: str, line: str) -> None:
     if m.group(14) is not None:
         return
-    after = combined[m.end(13) : m.end(13) + 15]
-    if not after.startswith(("-", "–")):
+    if not combined[m.end(13) : m.end(13) + 15].startswith(("-", "–")):
         return
-    post_bid = line.split(m.group(6), 1)[-1]
-    singles = re.findall(r"\d+\.\d{4}", post_bid)
+    singles = re.findall(r"\d+\.\d{4}", line.split(m.group(6), 1)[-1])
     if len(singles) >= 2:
         row.weighted_avg_discount = _to_float(singles[-2])
         row.weighted_avg_interest = _to_float(singles[-1])
@@ -143,43 +145,59 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
         raise ParseError(f"could not read PDF ({exc})") from exc
     text = _clean_text(text)
 
-    notice_m = NOTICE_RE.search(text)
-    tender_m = TENDER_RE.search(text)
-    issue_m = ISSUE_RE.search(text)
-    target_m = TARGET_RE.search(text)
+    n_m = NOTICE_RE.search(text)
+    t_m = TENDER_RE.search(text)
+    i_m = ISSUE_RE.search(text)
+    g_m = TARGET_RE.search(text)
 
-    if not tender_m:
+    if not t_m:
         print(f"warning: {path.name}: tender number/date not found", file=sys.stderr)
 
-    notice_no = notice_m.group(1) if notice_m else None
-    tender_no = tender_m.group(1) if tender_m else None
-    tender_date = (
-        f"{tender_m.group(2)} {tender_m.group(3)} {tender_m.group(4)}"
-        if tender_m
-        else None
+    ctx = _ParseCtx(
+        notice_no=n_m.group(1) if n_m else None,
+        tender_no=t_m.group(1) if t_m else None,
+        tender_date=f"{t_m.group(2)} {t_m.group(3)} {t_m.group(4)}" if t_m else None,
+        issue_date=f"{i_m.group(1)} {i_m.group(2)} {i_m.group(3)}" if i_m else None,
+        target=_to_float(g_m.group(1)) if g_m else _extract_target(chars),
     )
-    issue_date = (
-        f"{issue_m.group(1)} {issue_m.group(2)} {issue_m.group(3)}" if issue_m else None
-    )
-    if target_m:
-        target = _to_float(target_m.group(1))
-    else:
-        target = _extract_target_amount(chars)
 
-    def _range_or_single(
-        m: re.Match[str], low_idx: int, high_idx: int, single_idx: int
-    ) -> tuple[float, float]:
-        if m.group(single_idx) is not None:
-            v = _to_float(m.group(single_idx))
-            return v, v
-        return _to_float(m.group(low_idx)), _to_float(m.group(high_idx))
+    rows: list[AuctionRow] = []
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if not line.startswith("GHGGOG"):
+            continue
+        m = ROW_RE.search(line)
+        if m:
+            rows.append(ctx.build_row(m))
+            continue
+        for offset in range(1, min(4, len(lines) - i)):
+            combined = line + " " + lines[i + offset]
+            m = ROW_RE.search(combined)
+            if m:
+                row = ctx.build_row(m)
+                _fix_wa(row, m, combined, line)
+                rows.append(row)
+                break
 
-    def _build_row(m: re.Match[str]) -> AuctionRow:
+    if len(rows) not in (2, 3):
+        raise ParseError(f"expected 2 or 3 tenor rows, found {len(rows)}")
+    return rows
+
+
+@dataclass
+class _ParseCtx:
+    notice_no: str | None
+    tender_no: str | None
+    tender_date: str | None
+    issue_date: str | None
+    target: float | None
+
+    def build_row(self, m: re.Match[str]) -> AuctionRow:
         return AuctionRow(
-            notice_no=notice_no,
-            tender_no=tender_no,
-            tender_date=tender_date,
-            issue_date=issue_date,
+            notice_no=self.notice_no,
+            tender_no=self.tender_no,
+            tender_date=self.tender_date,
+            issue_date=self.issue_date,
             isin=m.group(1),
             tenor=m.group(2).replace("  ", " "),
             bids_tendered_ghs_m=_to_float(m.group(3)),
@@ -192,27 +210,5 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
             allotted_interest_high=_range_or_single(m, 10, 11, 12)[1],
             weighted_avg_discount=_to_float(m.group(13)),
             weighted_avg_interest=_to_float(m.group(14)) if m.group(14) else 0.0,
-            target_ghs_m=target,
+            target_ghs_m=self.target,
         )
-
-    lines = text.split("\n")
-    rows = []
-    for i, line in enumerate(lines):
-        if not line.startswith("GHGGOG"):
-            continue
-        m = ROW_RE.search(line)
-        if m:
-            rows.append(_build_row(m))
-            continue
-        for offset in range(1, min(4, len(lines) - i)):
-            combined = line + " " + lines[i + offset]
-            m = ROW_RE.search(combined)
-            if m:
-                row = _build_row(m)
-                _fix_wa_if_from_range(row, m, combined, line)
-                rows.append(row)
-                break
-
-    if len(rows) not in (2, 3):
-        raise ParseError(f"expected 2 or 3 tenor rows, found {len(rows)}")
-    return rows

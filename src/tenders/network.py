@@ -15,23 +15,23 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 USER_AGENT = "Mozilla/5.0 (compatible; BOGFetch/1.0)"
 verify_ssl = False
-
 BASE_URL = "https://www.bog.gov.gh/wp-content/uploads"
 AUCTION_PAGE = "https://www.bog.gov.gh/gog_auction_results"
 
-_thread_local = threading.local()
 
+class _SessionPool:
+    _local = threading.local()
 
-def _get_session() -> requests.Session:
-    session = getattr(_thread_local, "session", None)
-    if session is None:
-        session = requests.Session()
-        session.headers.update({"User-Agent": USER_AGENT})
-        session.verify = verify_ssl
-        adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20)
-        session.mount("https://", adapter)
-        _thread_local.session = session
-    return session
+    @classmethod
+    def get(cls) -> requests.Session:
+        session = getattr(cls._local, "session", None)
+        if session is None:
+            session = requests.Session()
+            session.headers.update({"User-Agent": USER_AGENT})
+            session.verify = verify_ssl
+            session.mount("https://", HTTPAdapter(pool_connections=10, pool_maxsize=20))
+            cls._local.session = session
+        return session
 
 
 def month_variants(d: date) -> list[date]:
@@ -50,17 +50,13 @@ def month_variants(d: date) -> list[date]:
 
 
 def pdf_url(tender_number: int, d: date, suffix: str = "") -> str:
-    return (
-        f"{BASE_URL}/{d.year:04d}/{d.month:02d}/Auctresults-{tender_number}{suffix}.pdf"
-    )
+    return f"{BASE_URL}/{d.year:04d}/{d.month:02d}/Auctresults-{tender_number}{suffix}.pdf"
 
 
 def probe_urls_for_tender(tender_number: int, d: date) -> list[str]:
-    urls: list[str] = []
-    for md in month_variants(d):
-        urls.append(pdf_url(tender_number, md))
-        urls.append(pdf_url(tender_number, md, suffix="x"))
-    return urls
+    return [pdf_url(tender_number, md, s)
+            for md in month_variants(d)
+            for s in ("", "x")]
 
 
 def auction_page_url(tender_number: int) -> str:
@@ -69,15 +65,14 @@ def auction_page_url(tender_number: int) -> str:
 
 def url_exists(url: str) -> bool:
     try:
-        r = _get_session().head(url, timeout=10, allow_redirects=True)
-        return r.status_code == 200
+        return _SessionPool.get().head(url, timeout=10, allow_redirects=True).status_code == 200
     except Exception:
         return False
 
 
 def download_file(url: str, filepath: Path) -> bool:
     try:
-        r = _get_session().get(url, timeout=30, stream=True)
+        r = _SessionPool.get().get(url, timeout=30, stream=True)
         if r.status_code != 200:
             return False
         with open(filepath, "wb") as f:
@@ -102,10 +97,8 @@ def probe_urls(urls: list[str], max_workers: int = 8) -> str | None:
 
 def fetch_page(url: str) -> str | None:
     try:
-        r = _get_session().get(url, timeout=30)
-        if r.status_code == 200:
-            return r.text
-        return None
+        r = _SessionPool.get().get(url, timeout=30)
+        return r.text if r.status_code == 200 else None
     except Exception:
         return None
 
@@ -122,8 +115,7 @@ class _LinkFinder(HTMLParser):
         attr_dict = dict(attrs)
         href = attr_dict.get("href") or ""
         if self.url is None:
-            classes = (attr_dict.get("class") or "").split()
-            if "jet-button__instance" in classes:
+            if "jet-button__instance" in (attr_dict.get("class") or "").split():
                 self.url = href
         if self.fallback is None and href.lower().endswith(".pdf"):
             self.fallback = href
