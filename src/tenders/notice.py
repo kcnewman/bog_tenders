@@ -19,9 +19,13 @@ ROW_RE = re.compile(
 )
 NOTICE_RE = re.compile(r"NOTICE TO BANKS AND PUBLIC NO\.?\s*(\S+)")
 TENDER_RE = re.compile(
-    r"RESULTS OF TENDER\s*(\d+)\s*HELD ON\s*(\d+)\w*\s*(\w+)[,.]?\s+(\d{4})"
+    r"RESULTS OF TENDER\s*(\d+)\s*HELD ON\s*(\d+)(?:ST|ND|RD|TH)?\s*(\w+)[,.]?\s+(\d{4})",
+    re.IGNORECASE,
 )
-ISSUE_RE = re.compile(r"SECURITIES TO BE ISSUED ON\s*(\d+)\w*\s*(\w+)[,.]?\s+(\d{4})")
+ISSUE_RE = re.compile(
+    r"SECURITIES TO BE ISSUED ON\s*(\d+)(?:ST|ND|RD|TH)?\s*(\w+)[,.]?\s+(\d{4})",
+    re.IGNORECASE,
+)
 TARGET_RE = re.compile(
     r"TARGET FOR 91"
     r"(?:,\s*182\s+AND\s+364-DAY| AND 182-DAY)"
@@ -103,7 +107,7 @@ def _to_float(s: str) -> float:
 def _clean_text(text: str) -> str:
     text = re.sub(r"(\d+\.\d{4})\.(\d+\.\d{4})", r"\1-\2", text)
     text = re.sub(r"(\d+\.\d{4})-\s+(?=\1(?:-|\s))", r"", text)
-    text = re.sub(r"(?<=\d)-\s+(?=\d)", "", text)
+    text = re.sub(r"(?<=\d)-\s+(?=\d)", "-", text)
     text = re.sub(
         r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)",
         r"\1\2-\2",
