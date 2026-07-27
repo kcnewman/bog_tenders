@@ -20,7 +20,7 @@ from rich.table import Table
 from rich.text import Text
 
 from . import network
-from .tenders import tender_date, tender_range_for_year
+from .dates import tender_date, tender_range_for_year
 
 console = Console()
 
