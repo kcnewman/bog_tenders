@@ -35,18 +35,10 @@ class _SessionPool:
 
 
 def month_variants(d: date) -> list[date]:
-    y, m = d.year, d.month
-    variants: list[date] = []
-    for dm in (0, -1, 1):
-        nm = m + dm
-        if nm < 1 or nm > 12:
-            continue
-        if dm == -1 and d.day > 3:
-            continue
-        if dm == 1 and d.day < 29:
-            continue
-        variants.append(date(y, nm, 1))
-    return variants
+    return [date(d.year, m, 1) for m in (d.month, d.month - 1, d.month + 1)
+            if 1 <= m <= 12
+            and not (m == d.month - 1 and d.day > 3)
+            and not (m == d.month + 1 and d.day < 29)]
 
 
 def pdf_url(tender_number: int, d: date, suffix: str = "") -> str:
@@ -54,9 +46,7 @@ def pdf_url(tender_number: int, d: date, suffix: str = "") -> str:
 
 
 def probe_urls_for_tender(tender_number: int, d: date) -> list[str]:
-    return [pdf_url(tender_number, md, s)
-            for md in month_variants(d)
-            for s in ("", "x")]
+    return [pdf_url(tender_number, md, s) for md in month_variants(d) for s in ("", "x")]
 
 
 def auction_page_url(tender_number: int) -> str:

@@ -145,11 +145,7 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
         raise ParseError(f"could not read PDF ({exc})") from exc
     text = _clean_text(text)
 
-    n_m = NOTICE_RE.search(text)
-    t_m = TENDER_RE.search(text)
-    i_m = ISSUE_RE.search(text)
-    g_m = TARGET_RE.search(text)
-
+    n_m, t_m, i_m, g_m = (r.search(text) for r in (NOTICE_RE, TENDER_RE, ISSUE_RE, TARGET_RE))
     if not t_m:
         print(f"warning: {path.name}: tender number/date not found", file=sys.stderr)
 
@@ -161,8 +157,8 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
         target=_to_float(g_m.group(1)) if g_m else _extract_target(chars),
     )
 
-    rows: list[AuctionRow] = []
     lines = text.split("\n")
+    rows: list[AuctionRow] = []
     for i, line in enumerate(lines):
         if not line.startswith("GHGGOG"):
             continue
@@ -173,11 +169,12 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
         for offset in range(1, min(4, len(lines) - i)):
             combined = line + " " + lines[i + offset]
             m = ROW_RE.search(combined)
-            if m:
-                row = ctx.build_row(m)
-                _fix_wa(row, m, combined, line)
-                rows.append(row)
-                break
+            if not m:
+                continue
+            row = ctx.build_row(m)
+            _fix_wa(row, m, combined, line)
+            rows.append(row)
+            break
 
     if len(rows) not in (2, 3):
         raise ParseError(f"expected 2 or 3 tenor rows, found {len(rows)}")
@@ -193,22 +190,15 @@ class _ParseCtx:
     target: float | None
 
     def build_row(self, m: re.Match[str]) -> AuctionRow:
+        g = m.group
+        dl, dh = _range_or_single(m, 7, 8, 9)
+        il, ih = _range_or_single(m, 10, 11, 12)
         return AuctionRow(
-            notice_no=self.notice_no,
-            tender_no=self.tender_no,
-            tender_date=self.tender_date,
-            issue_date=self.issue_date,
-            isin=m.group(1),
-            tenor=m.group(2).replace("  ", " "),
-            bids_tendered_ghs_m=_to_float(m.group(3)),
-            bids_accepted_ghs_m=_to_float(m.group(4)),
-            bid_rate_range_low=_to_float(m.group(5)),
-            bid_rate_range_high=_to_float(m.group(6)),
-            allotted_discount_low=_range_or_single(m, 7, 8, 9)[0],
-            allotted_discount_high=_range_or_single(m, 7, 8, 9)[1],
-            allotted_interest_low=_range_or_single(m, 10, 11, 12)[0],
-            allotted_interest_high=_range_or_single(m, 10, 11, 12)[1],
-            weighted_avg_discount=_to_float(m.group(13)),
-            weighted_avg_interest=_to_float(m.group(14)) if m.group(14) else 0.0,
-            target_ghs_m=self.target,
+            self.notice_no, self.tender_no, self.tender_date, self.issue_date,
+            g(1), g(2).replace("  ", " "),
+            _to_float(g(3)), _to_float(g(4)),
+            _to_float(g(5)), _to_float(g(6)),
+            dl, dh, il, ih,
+            _to_float(g(13)), _to_float(g(14)) if g(14) else 0.0,
+            self.target,
         )

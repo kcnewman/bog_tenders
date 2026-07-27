@@ -26,22 +26,18 @@ class TendersCLI:
         (self._download if args.command == "download" else self._parse)(args)
 
     def _build_parser(self) -> argparse.ArgumentParser:
-        p = argparse.ArgumentParser(
-            prog="tenders", description="Bank of Ghana GOG T-Bill auction results tool"
-        )
+        p = argparse.ArgumentParser(prog="tenders", description="BOG GOG T-Bill auction results tool")
         s = p.add_subparsers(dest="command")
         dl = s.add_parser("download", help="Download PDFs from BOG website")
         dl.add_argument("--year", "-y", help="Year (2025) or range (2024-2026)")
-        dl.add_argument("--tender", "-t", type=int, help="Fetch a specific tender number")
+        dl.add_argument("--tender", "-t", type=int, help="Specific tender number")
         dl.add_argument("--output", "-o", default="auction reports", help="Output dir")
         dl.add_argument("--workers", "-w", type=int, default=6, help="Concurrent downloads")
         pr = s.add_parser("parse", help="Parse PDFs into structured output")
         pr.add_argument("tracker", type=Path)
         pr.add_argument("paths", nargs="+")
-        pr.add_argument("--format", choices=("xlsx", "csv", "json"),
-                        help="Output format (inferred from extension)")
-        pr.add_argument("-n", "--new", action="store_true",
-                        help="Force build new tracker")
+        pr.add_argument("--format", choices=("xlsx", "csv", "json"), help="Output format")
+        pr.add_argument("-n", "--new", action="store_true", help="Force new file")
         pr.add_argument("-v", "--verbose", action="store_true")
         return p
 
@@ -61,38 +57,34 @@ class TendersCLI:
     def _print_summary(years: list[int], found: int, total: int, missed: dict[int, list[int]]) -> None:
         console.clear()
         t = Table(show_header=False, box=None, padding=(0, 2))
-        t.add_column()
-        t.add_column(justify="right")
-        t.add_column(style="dim")
+        t.add_column(); t.add_column(justify="right"); t.add_column(style="dim")
         t.add_row(Text.assemble(("Total", "bold"), " tenders"), str(total),
                   f"({found} found, {total - found} missed)")
         if missed:
             t.add_section()
             for y in years:
                 m = missed.get(y)
-                if m:
-                    t.add_row(f"  {y}", "", ", ".join(str(n) for n in sorted(m)))
+                if m: t.add_row(f"  {y}", "", ", ".join(str(n) for n in sorted(m)))
         console.print(t)
 
     def _download(self, args: argparse.Namespace) -> None:
-        year: str | None = cast("str | None", args.year)
-        tender: int | None = cast("int | None", args.tender)
         out = Path(cast("str", args.output))
         out.mkdir(parents=True, exist_ok=True)
         workers: int = cast("int", args.workers)
 
-        if tender is not None:
-            d = tender_date(tender)
-            ok = fetch_tender(tender, out)
+        tn: int | None = cast("int | None", args.tender)
+        if tn is not None:
+            ok = fetch_tender(tn, out)
             label = Text("YES", style="green") if ok else Text("NO", style="red")
-            console.print(f"  {tender}  ({d}) — {label}")
+            console.print(f"  {tn}  ({tender_date(tn)}) — {label}")
             return
 
-        if year is None:
+        yr: str | None = cast("str | None", args.year)
+        if yr is None:
             console.print("[red]error:[/] specify --year or --tender")
             raise SystemExit(1)
 
-        years = self._parse_year_range(year)
+        years = self._parse_year_range(yr)
         end = date.today()
         found = total = 0
         missed: dict[int, list[int]] = {}
@@ -102,10 +94,8 @@ class TendersCLI:
                 f, t, m = fetch_year(y, out, workers,
                                      end_date=end if y == years[-1] else None,
                                      progress=progress, task_id=task)
-                found += f
-                total += t
-                if m:
-                    missed[y] = m
+                found += f; total += t
+                if m: missed[y] = m
         self._print_summary(years, found, total, missed)
 
     def _parse(self, args: argparse.Namespace) -> None:
