@@ -44,6 +44,12 @@ def collect_rows(
     return rows
 
 
+def _flatten(rows: list[AuctionRow]) -> list[list[Any]]:
+    return [
+        [getattr(r, n) for n in FIELD_NAMES] for r in sorted(rows, key=row_sort_key)
+    ]
+
+
 def _write(wb: Any, out_path: Path, rows: list[AuctionRow]) -> int:
     ws = wb.active or wb.create_sheet()
     ws.title = "Auction Results"
