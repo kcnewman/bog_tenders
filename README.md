@@ -6,9 +6,13 @@ into structured Excel reports.
 ## Install
 
 ```bash
-git clone https://github.com/kcnewman/tender.git
-cd tender
-uv tool install .
+pipx install git+https://github.com/kcnewman/tender.git
+```
+
+Or with `uv`:
+
+```bash
+uv tool install git+https://github.com/kcnewman/tender.git
 ```
 
 ## Usage
