@@ -9,19 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import openpyxl
-from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TaskID,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
+from rich.progress import Progress, TaskID
 
+from . import console, make_progress
 from .notice import FIELD_NAMES, HEADERS, AuctionRow, ParseError, parse_pdf
-
-console = Console()
 
 
 def discover_pdfs(paths: Iterable[str], recursive: bool = False) -> list[Path]:
@@ -113,14 +104,7 @@ def main(args: argparse.Namespace) -> None:
         print("error: no PDF files found in the given paths", file=sys.stderr)
         raise SystemExit(1)
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        TextColumn("{task.completed}/{task.total}"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
+    with make_progress() as progress:
         task = progress.add_task("  Parsing PDFs", total=len(pdf_paths))
         rows = collect_rows(pdf_paths, progress=progress, task_id=task)
 

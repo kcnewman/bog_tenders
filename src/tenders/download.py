@@ -4,13 +4,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
 
-from rich.console import Console
 from rich.progress import Progress, TaskID
 
-from . import network
+from . import console, network
 from .dates import tender_date, tender_range_for_year
-
-console = Console()
 
 
 def fetch_tender(

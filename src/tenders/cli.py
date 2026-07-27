@@ -6,21 +6,12 @@ from datetime import date
 from pathlib import Path
 from typing import cast
 
-from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
 from rich.table import Table
 from rich.text import Text
 
+from . import console, make_progress
 from .dates import tender_date
 from .download import fetch_tender, fetch_year
-
-console = Console()
 
 
 def _run_download(args: argparse.Namespace) -> None:
@@ -49,14 +40,7 @@ def _run_download(args: argparse.Namespace) -> None:
             years = [int(year)]
         total_found = 0
         total_count = 0
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            TextColumn("{task.completed}/{task.total}"),
-            TimeElapsedColumn(),
-            console=console,
-        ) as progress:
+        with make_progress() as progress:
             for y in years:
                 candidates_end = end if y == years[-1] else None
                 task = progress.add_task(f"  {y}", total=0)
