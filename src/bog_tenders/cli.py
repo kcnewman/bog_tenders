@@ -150,11 +150,13 @@ def main() -> None:
         "-k", "--no-verify-ssl", action="store_true", help="Skip SSL verification"
     )
     pr = sub.add_parser("parse", help="Parse PDFs into Excel tracker")
-    pr.add_argument("mode", choices=["build", "append"], help="Create new or append")
     pr.add_argument("tracker", type=Path, help="Output .xlsx file")
     pr.add_argument("paths", nargs="+", help="PDF files and/or directories")
     pr.add_argument(
         "--recursive", action="store_true", help="Search directories recursively"
+    )
+    pr.add_argument(
+        "-n", "--new", action="store_true", help="Force build new tracker (ignore existing)"
     )
     pr.add_argument("-v", "--verbose", action="store_true", help="Debug output")
     if (

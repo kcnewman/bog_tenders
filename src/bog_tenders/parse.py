@@ -124,13 +124,9 @@ def main(args: argparse.Namespace) -> None:
         task = progress.add_task("  Parsing PDFs", total=len(pdf_paths))
         rows = collect_rows(pdf_paths, progress=progress, task_id=task)
 
-    if args.mode == "build":
+    if args.new or not args.tracker.exists():
         n = _build(args.tracker, rows)
         if not n:
             raise SystemExit(1)
     else:
-        if not args.tracker.exists():
-            print(f"{args.tracker} does not exist yet — building fresh")
-            _build(args.tracker, rows)
-        else:
-            _append(args.tracker, rows)
+        _append(args.tracker, rows)
