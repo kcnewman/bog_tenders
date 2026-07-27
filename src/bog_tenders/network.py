@@ -116,17 +116,22 @@ def extract_download_url(html: str) -> str | None:
         def __init__(self) -> None:
             super().__init__()
             self.url: str | None = None
+            self.fallback: str | None = None
 
         def handle_starttag(
             self, tag: str, attrs: list[tuple[str, str | None]]
         ) -> None:
-            if tag != "a" or self.url is not None:
+            if tag != "a":
                 return
             attr_dict = dict(attrs)
-            classes = (attr_dict.get("class") or "").split()
-            if "jet-button__instance" in classes:
-                self.url = attr_dict.get("href")
+            href = attr_dict.get("href") or ""
+            if self.url is None:
+                classes = (attr_dict.get("class") or "").split()
+                if "jet-button__instance" in classes:
+                    self.url = href
+            if self.fallback is None and href.lower().endswith(".pdf"):
+                self.fallback = href
 
     parser = _LinkFinder()
     parser.feed(html)
-    return parser.url
+    return parser.url or parser.fallback
