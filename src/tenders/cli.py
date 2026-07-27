@@ -19,7 +19,6 @@ def _run_download(args: argparse.Namespace) -> None:
     tender = cast("int | None", args.tender)
     output = cast("str", args.output)
     workers = cast("int", args.workers)
-    verify = not cast("bool", args.no_verify_ssl)
     if not year and not tender:
         console.print("[red]error:[/] specify --year or --tender")
         raise SystemExit(1)
@@ -27,7 +26,7 @@ def _run_download(args: argparse.Namespace) -> None:
     out.mkdir(parents=True, exist_ok=True)
     if tender is not None:
         d = tender_date(tender)
-        ok = fetch_tender(tender, out, verify=verify)
+        ok = fetch_tender(tender, out)
         label = Text("YES", style="green") if ok else Text("NO", style="red")
         console.print(f"  {tender}  ({d}) — {label}")
     else:
@@ -51,7 +50,6 @@ def _run_download(args: argparse.Namespace) -> None:
                     end_date=candidates_end,
                     progress=progress,
                     task_id=task,
-                    verify=verify,
                 )
                 total_found += found
                 total_count += total
@@ -79,9 +77,6 @@ def main() -> None:
     dl.add_argument("--output", "-o", default="auction reports", help="Output dir")
     dl.add_argument(
         "--workers", "-w", type=int, default=6, help="Concurrent downloads (default: 6)"
-    )
-    dl.add_argument(
-        "-k", "--no-verify-ssl", action="store_true", help="Skip SSL verification"
     )
     pr = sub.add_parser("parse", help="Parse PDFs into Excel tracker")
     pr.add_argument("tracker", type=Path, help="Output .xlsx file")

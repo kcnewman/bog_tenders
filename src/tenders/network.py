@@ -12,6 +12,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 USER_AGENT = "Mozilla/5.0 (compatible; BOGFetch/1.0)"
+verify_ssl = False
 
 BASE_URL = "https://www.bog.gov.gh/wp-content/uploads"
 AUCTION_PAGE = "https://www.bog.gov.gh/gog_auction_results"
@@ -50,28 +51,28 @@ def auction_page_url(tender_number: int) -> str:
     return f"{AUCTION_PAGE}/results-of-gog-tender-{tender_number}/"
 
 
-def url_exists(url: str, verify: bool = False) -> bool:
+def url_exists(url: str) -> bool:
     try:
         r = requests.head(
             url,
             timeout=10,
             allow_redirects=True,
             headers={"User-Agent": USER_AGENT},
-            verify=verify,
+            verify=verify_ssl,
         )
         return r.status_code == 200
     except Exception:
         return False
 
 
-def download_file(url: str, filepath: Path, verify: bool = False) -> bool:
+def download_file(url: str, filepath: Path) -> bool:
     try:
         r = requests.get(
             url,
             timeout=30,
             stream=True,
             headers={"User-Agent": USER_AGENT},
-            verify=verify,
+            verify=verify_ssl,
         )
         if r.status_code != 200:
             return False
@@ -84,28 +85,24 @@ def download_file(url: str, filepath: Path, verify: bool = False) -> bool:
         return False
 
 
-def probe_urls(
-    urls: list[str], max_workers: int = 8, verify: bool = False
-) -> str | None:
+def probe_urls(urls: list[str], max_workers: int = 8) -> str | None:
     if not urls:
         return None
     with ThreadPoolExecutor(max_workers=min(max_workers, len(urls))) as ex:
-        fut_to_url = {
-            ex.submit(url_exists, url, verify): url for url in urls
-        }
+        fut_to_url = {ex.submit(url_exists, url): url for url in urls}
         for fut in as_completed(fut_to_url):
             if fut.result():
                 return fut_to_url[fut]
     return None
 
 
-def fetch_page(url: str, verify: bool = False) -> str | None:
+def fetch_page(url: str) -> str | None:
     try:
         r = requests.get(
             url,
             timeout=30,
             headers={"User-Agent": USER_AGENT},
-            verify=verify,
+            verify=verify_ssl,
         )
         if r.status_code == 200:
             return r.text
