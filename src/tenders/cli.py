@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
 from typing import cast
@@ -11,7 +10,6 @@ from rich.console import Console
 from rich.progress import (
     BarColumn,
     Progress,
-    TaskID,
     TaskProgressColumn,
     TextColumn,
     TimeElapsedColumn,
@@ -20,56 +18,10 @@ from rich.table import Table
 from rich.text import Text
 
 from . import network
-from .dates import tender_date, tender_range_for_year
+from .dates import tender_date
+from .download import fetch_tender, fetch_year
 
 console = Console()
-
-
-def fetch_tender(tender_number: int, output_dir: Path) -> bool:
-    d = tender_date(tender_number)
-    filepath = output_dir / f"Auctresults-{tender_number}.pdf"
-    if filepath.exists():
-        return True
-    hit = network.probe_urls(network.probe_urls_for_tender(tender_number, d))
-    if hit and network.download_file(hit, filepath):
-        return True
-    html = network.fetch_page(network.auction_page_url(tender_number))
-    if html:
-        dl_url = network.extract_download_url(html)
-        if dl_url and network.download_file(dl_url, filepath):
-            return True
-    return False
-
-
-def fetch_year(
-    year: int,
-    output_dir: Path,
-    workers: int,
-    end_date: date | None = None,
-    progress: Progress | None = None,
-    task_id: TaskID | None = None,
-) -> int:
-    candidates = tender_range_for_year(year, end_date)
-    if not candidates:
-        return 0
-    found = 0
-    missed: list[int] = []
-    with ThreadPoolExecutor(max_workers=workers) as ex:
-        fut_to_n = {ex.submit(fetch_tender, n, output_dir): n for n in candidates}
-        for fut in as_completed(fut_to_n):
-            n = fut_to_n[fut]
-            if fut.result():
-                found += 1
-            else:
-                missed.append(n)
-            if progress is not None and task_id is not None:
-                progress.update(task_id, advance=1)
-    if missed:
-        console.log(
-            f"[yellow]not found:[/] {', '.join(str(n) for n in missed)}",
-            _stack_offset=2,
-        )
-    return found
 
 
 def _run_download(args: argparse.Namespace) -> None:
@@ -94,8 +46,8 @@ def _run_download(args: argparse.Namespace) -> None:
         end = date.today()
         assert year is not None
         if "-" in year:
-            start, end = year.split("-", 1)
-            years = list(range(int(start), int(end) + 1))
+            start, end_year = year.split("-", 1)
+            years = list(range(int(start), int(end_year) + 1))
         else:
             years = [int(year)]
         total_found = 0
@@ -109,18 +61,18 @@ def _run_download(args: argparse.Namespace) -> None:
             console=console,
         ) as progress:
             for y in years:
-                candidates = tender_range_for_year(y, end if y == years[-1] else None)
-                task = progress.add_task(f"  {y}", total=len(candidates))
-                found = fetch_year(
+                candidates_end = end if y == years[-1] else None
+                task = progress.add_task(f"  {y}", total=0)
+                found, total = fetch_year(
                     y,
                     out,
                     workers,
-                    end_date=end if y == years[-1] else None,
+                    end_date=candidates_end,
                     progress=progress,
                     task_id=task,
                 )
                 total_found += found
-                total_count += len(candidates)
+                total_count += total
         table = Table.grid(padding=(0, 2))
         table.add_column()
         table.add_column(justify="right")
@@ -136,7 +88,7 @@ def _run_download(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="bog-tenders", description="Bank of Ghana GOG T-Bill auction results tool"
+        prog="tenders", description="Bank of Ghana GOG T-Bill auction results tool"
     )
     sub = parser.add_subparsers(dest="command")
     dl = sub.add_parser("download", help="Download PDFs from BOG website")
