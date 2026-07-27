@@ -79,23 +79,17 @@ HEADERS = [
 
 
 def _extract_target_amount(chars: list[dict[str, Any]]) -> float | None:
-    lines: dict[float, list[tuple[float, str]]] = {}
+    by_top: dict[int, list[tuple[float, str]]] = {}
     for c in chars:
-        top = round(c["top"])
-        lines.setdefault(top, []).append((c["x0"], c["text"]))
-    line_strings: dict[float, str] = {}
-    for top in lines:
-        items = sorted(lines[top], key=lambda x: x[0])
-        line_strings[top] = "".join(item[1] for item in items)
-    target_tops = [top for top, text in line_strings.items() if "TARGET FOR 91" in text]
-    if not target_tops:
-        return None
-    target_top = target_tops[0]
-    nearby = [c for c in chars if abs(round(c["top"]) - target_top) <= 1]
-    merged = sorted(nearby, key=lambda c: (c["x0"], c["top"]))
-    text = "".join(str(c["text"]) for c in merged)
-    m = re.search(r"T/BILLS:.*?([\d,]+\.\d+)\s*Million", text)
-    return _to_float(m.group(1)) if m else None
+        by_top.setdefault(round(c["top"]), []).append((c["x0"], c["text"]))
+    for top in sorted(by_top):
+        items = sorted(by_top[top], key=lambda x: x[0])
+        line = "".join(text for _, text in items)
+        if "TARGET FOR 91" in line:
+            m = re.search(r"T/BILLS:.*?([\d,]+\.\d+)\s*Million", line)
+            if m:
+                return _to_float(m.group(1))
+    return None
 
 
 def _to_float(s: str) -> float:
