@@ -14,68 +14,73 @@ from .dates import tender_date
 from .download import fetch_tender, fetch_year
 
 
+def _parse_year_range(year: str) -> list[int]:
+    if "-" in year:
+        start, end_yr = year.split("-", 1)
+        return list(range(int(start), int(end_yr) + 1))
+    return [int(year)]
+
+
+def _print_summary(
+    years: list[int],
+    total_found: int,
+    total_count: int,
+    missed_by_year: dict[int, list[int]],
+) -> None:
+    console.clear()
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column()
+    table.add_column(justify="right")
+    table.add_column(style="dim")
+    table.add_row(
+        Text.assemble(("Total", "bold"), " tenders"),
+        str(total_count),
+        f"({total_found} found, {total_count - total_found} missed)",
+    )
+    if missed_by_year:
+        table.add_section()
+        for y in years:
+            m = missed_by_year.get(y)
+            if m:
+                table.add_row(f"  {y}", "", ", ".join(str(n) for n in sorted(m)))
+    console.print(table)
+
+
 def _run_download(args: argparse.Namespace) -> None:
     year = cast("str | None", args.year)
     tender = cast("int | None", args.tender)
-    output = cast("str", args.output)
     workers = cast("int", args.workers)
-    if not year and not tender:
-        console.print("[red]error:[/] specify --year or --tender")
-        raise SystemExit(1)
-    out = Path(output)
+    out = Path(cast("str", args.output))
     out.mkdir(parents=True, exist_ok=True)
     if tender is not None:
         d = tender_date(tender)
         ok = fetch_tender(tender, out)
         label = Text("YES", style="green") if ok else Text("NO", style="red")
         console.print(f"  {tender}  ({d}) — {label}")
-    else:
-        end = date.today()
-        assert year is not None
-        if "-" in year:
-            start, end_year = year.split("-", 1)
-            years = list(range(int(start), int(end_year) + 1))
-        else:
-            years = [int(year)]
-        total_found = 0
-        total_count = 0
-        missed_by_year: dict[int, list[int]] = {}
-        with make_progress() as progress:
-            for y in years:
-                candidates_end = end if y == years[-1] else None
-                task = progress.add_task(f"  {y}", total=0)
-                found, total, missed = fetch_year(
-                    y,
-                    out,
-                    workers,
-                    end_date=candidates_end,
-                    progress=progress,
-                    task_id=task,
-                )
-                total_found += found
-                total_count += total
-                if missed:
-                    missed_by_year[y] = missed
-        console.clear()
-        table = Table(show_header=False, box=None, padding=(0, 2))
-        table.add_column()
-        table.add_column(justify="right")
-        table.add_column(style="dim")
-        table.add_row(
-            Text.assemble(("Total", "bold"), " tenders"),
-            str(total_count),
-            f"({total_found} found, {total_count - total_found} missed)",
-        )
-        if missed_by_year:
-            table.add_section()
-            for y in years:
-                m = missed_by_year.get(y)
-                if m:
-                    table.add_row(f"  {y}", "", ", ".join(str(n) for n in sorted(m)))
-        console.print(table)
+        return
+    if year is None:
+        console.print("[red]error:[/] specify --year or --tender")
+        raise SystemExit(1)
+    end = date.today()
+    years = _parse_year_range(year)
+    total_found = 0
+    total_count = 0
+    missed_by_year: dict[int, list[int]] = {}
+    with make_progress() as progress:
+        for y in years:
+            candidates_end = end if y == years[-1] else None
+            task = progress.add_task(f"  {y}", total=0)
+            found, total, missed = fetch_year(
+                y, out, workers, end_date=candidates_end, progress=progress, task_id=task
+            )
+            total_found += found
+            total_count += total
+            if missed:
+                missed_by_year[y] = missed
+    _print_summary(years, total_found, total_count, missed_by_year)
 
 
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tenders", description="Bank of Ghana GOG T-Bill auction results tool"
     )
@@ -91,14 +96,18 @@ def main() -> None:
     pr.add_argument("tracker", type=Path, help="Output .xlsx file")
     pr.add_argument("paths", nargs="+", help="PDF files and/or directories")
     pr.add_argument(
-        "-n", "--new", action="store_true", help="Force build new tracker (ignore existing)"
+        "-n", "--new", action="store_true", help="Force build new tracker"
     )
     pr.add_argument("-v", "--verbose", action="store_true", help="Debug output")
-    if (
-        len(sys.argv) > 1
-        and sys.argv[1].startswith("-")
-        and sys.argv[1] not in ("-h", "--help")
-    ):
+    return parser
+
+
+def main() -> None:
+    parser = _build_parser()
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return
+    if sys.argv[1] not in ("download", "parse", "-h", "--help"):
         sys.argv.insert(1, "download")
     args = parser.parse_args()
     if args.command == "download":
@@ -107,5 +116,3 @@ def main() -> None:
         from .excel import main as parse_main
 
         parse_main(args)
-    else:
-        parser.print_help()

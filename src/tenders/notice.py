@@ -94,11 +94,10 @@ def _extract_target_amount(chars: list[dict[str, Any]]) -> float | None:
 
 
 def _to_float(s: str) -> float:
-    s = s.rstrip(".").replace(",", "")
-    parts = s.split(".")
-    if len(parts) > 2:
-        s = "".join(parts[:-1]) + "." + parts[-1]
-    return float(s)
+    s = s.replace(",", "")
+    if s.count(".") > 1:
+        s = s[: s.rindex(".")].replace(".", "") + s[s.rindex(".") :]
+    return float(s.rstrip("."))
 
 
 def _clean_text(text: str) -> str:
@@ -111,6 +110,23 @@ def _clean_text(text: str) -> str:
         text,
     )
     return text
+
+
+def _fix_wa_if_from_range(
+    row: AuctionRow, m: re.Match[str], combined: str, line: str
+) -> None:
+    if m.group(14) is not None:
+        return
+    after = combined[m.end(13) : m.end(13) + 15]
+    if not after.startswith(("-", "–")):
+        return
+    post_bid = line.split(m.group(6), 1)[-1]
+    singles = re.findall(r"\d+\.\d{4}", post_bid)
+    if len(singles) >= 2:
+        row.weighted_avg_discount = _to_float(singles[-2])
+        row.weighted_avg_interest = _to_float(singles[-1])
+    else:
+        row.weighted_avg_discount = 0.0
 
 
 def parse_pdf(path: Path) -> list[AuctionRow]:
@@ -189,15 +205,7 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
             m = ROW_RE.search(combined)
             if m:
                 row = _build_row(m)
-                if m.group(14) is None:
-                    after = combined[m.end(13):m.end(13)+15]
-                    if after.startswith(("-", "–")):
-                        singles = re.findall(r"\d+\.\d{4}", line.split(m.group(6), 1)[-1])
-                        if len(singles) >= 2:
-                            row.weighted_avg_discount = _to_float(singles[-2])
-                            row.weighted_avg_interest = _to_float(singles[-1])
-                        else:
-                            row.weighted_avg_discount = 0.0
+                _fix_wa_if_from_range(row, m, combined, line)
                 rows.append(row)
                 break
 

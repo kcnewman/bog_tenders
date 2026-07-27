@@ -5,8 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from html.parser import HTMLParser
 from pathlib import Path
-
 import threading
+
 import requests
 from requests.adapters import HTTPAdapter
 import urllib3
@@ -110,27 +110,26 @@ def fetch_page(url: str) -> str | None:
         return None
 
 
+class _LinkFinder(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.url: str | None = None
+        self.fallback: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "a":
+            return
+        attr_dict = dict(attrs)
+        href = attr_dict.get("href") or ""
+        if self.url is None:
+            classes = (attr_dict.get("class") or "").split()
+            if "jet-button__instance" in classes:
+                self.url = href
+        if self.fallback is None and href.lower().endswith(".pdf"):
+            self.fallback = href
+
+
 def extract_download_url(html: str) -> str | None:
-    class _LinkFinder(HTMLParser):
-        def __init__(self) -> None:
-            super().__init__()
-            self.url: str | None = None
-            self.fallback: str | None = None
-
-        def handle_starttag(
-            self, tag: str, attrs: list[tuple[str, str | None]]
-        ) -> None:
-            if tag != "a":
-                return
-            attr_dict = dict(attrs)
-            href = attr_dict.get("href") or ""
-            if self.url is None:
-                classes = (attr_dict.get("class") or "").split()
-                if "jet-button__instance" in classes:
-                    self.url = href
-            if self.fallback is None and href.lower().endswith(".pdf"):
-                self.fallback = href
-
     parser = _LinkFinder()
     parser.feed(html)
     return parser.url or parser.fallback
