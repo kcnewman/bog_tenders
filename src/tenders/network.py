@@ -96,17 +96,15 @@ def fetch_page(url: str) -> str | None:
 class _LinkFinder(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
-        self.url: str | None = None
-        self.fallback: str | None = None
+        self.url = self.fallback = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag != "a":
             return
         attr_dict = dict(attrs)
         href = attr_dict.get("href") or ""
-        if self.url is None:
-            if "jet-button__instance" in (attr_dict.get("class") or "").split():
-                self.url = href
+        if self.url is None and "jet-button__instance" in (attr_dict.get("class") or "").split():
+            self.url = href
         if self.fallback is None and href.lower().endswith(".pdf"):
             self.fallback = href
 

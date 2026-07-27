@@ -35,15 +35,12 @@ def fetch_year(
         return 0, 0, []
     if progress and task_id is not None:
         progress.update(task_id, total=len(candidates))
-    found = 0
-    missed: list[int] = []
+    found = 0; missed: list[int] = []
     with ThreadPoolExecutor(max_workers=workers) as ex:
         fm = {ex.submit(fetch_tender, n, output_dir): n for n in candidates}
         for fut in as_completed(fm):
-            ok = fut.result()
-            found += ok
-            if not ok:
-                missed.append(fm[fut])
+            ok = fut.result(); found += ok
+            if not ok: missed.append(fm[fut])
             if progress and task_id is not None:
                 progress.update(task_id, advance=1)
     return found, len(candidates), missed

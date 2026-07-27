@@ -15,14 +15,15 @@ from .download import fetch_tender, fetch_year
 
 
 class TendersCLI:
+    EXT_MAP = {".xlsx": "xlsx", ".csv": "csv", ".json": "json"}
+
     def run(self) -> None:
-        parser = self._build_parser()
         if len(sys.argv) == 1:
-            parser.print_help()
+            self._build_parser().print_help()
             return
         if sys.argv[1] not in ("download", "parse", "-h", "--help"):
             sys.argv.insert(1, "download")
-        args = parser.parse_args()
+        args = self._build_parser().parse_args()
         (self._download if args.command == "download" else self._parse)(args)
 
     def _build_parser(self) -> argparse.ArgumentParser:
@@ -34,24 +35,10 @@ class TendersCLI:
         dl.add_argument("--output", "-o", default="auction reports", help="Output dir")
         dl.add_argument("--workers", "-w", type=int, default=6, help="Concurrent downloads")
         pr = s.add_parser("parse", help="Parse PDFs into structured output")
-        pr.add_argument("tracker", type=Path)
-        pr.add_argument("paths", nargs="+")
+        pr.add_argument("tracker", type=Path); pr.add_argument("paths", nargs="+")
         pr.add_argument("--format", choices=("xlsx", "csv", "json"), help="Output format")
         pr.add_argument("-n", "--new", action="store_true", help="Force new file")
-        pr.add_argument("-v", "--verbose", action="store_true")
         return p
-
-    @staticmethod
-    def _parse_year_range(year: str) -> list[int]:
-        if "-" in year:
-            s, e = year.split("-", 1)
-            return list(range(int(s), int(e) + 1))
-        return [int(year)]
-
-    @staticmethod
-    def _infer_format(path: Path) -> str:
-        m = {".xlsx": "xlsx", ".csv": "csv", ".json": "json"}
-        return m.get(path.suffix.lower(), "xlsx")
 
     @staticmethod
     def _print_summary(years: list[int], found: int, total: int, missed: dict[int, list[int]]) -> None:
@@ -76,7 +63,7 @@ class TendersCLI:
         if tn is not None:
             ok = fetch_tender(tn, out)
             label = Text("YES", style="green") if ok else Text("NO", style="red")
-            console.print(f"  {tn}  ({tender_date(tn)}) — {label}")
+            console.print(f"  {tn}  ({tender_date(tn)}) — ", label)
             return
 
         yr: str | None = cast("str | None", args.year)
@@ -84,7 +71,11 @@ class TendersCLI:
             console.print("[red]error:[/] specify --year or --tender")
             raise SystemExit(1)
 
-        years = self._parse_year_range(yr)
+        if "-" in yr:
+            ss, ee = yr.split("-", 1)
+            years = list(range(int(ss), int(ee) + 1))
+        else:
+            years = [int(yr)]
         end = date.today()
         found = total = 0
         missed: dict[int, list[int]] = {}
@@ -99,7 +90,7 @@ class TendersCLI:
         self._print_summary(years, found, total, missed)
 
     def _parse(self, args: argparse.Namespace) -> None:
-        fmt = args.format or self._infer_format(args.tracker)
+        fmt = args.format or self.EXT_MAP.get(args.tracker.suffix.lower(), "xlsx")
         if fmt == "xlsx":
             from .excel import main as xl_main
             xl_main(args)

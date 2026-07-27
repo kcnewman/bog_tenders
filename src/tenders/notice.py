@@ -95,10 +95,7 @@ def _clean_text(text: str) -> str:
     text = re.sub(r"(\d+\.\d{4})\.(\d+\.\d{4})", r"\1-\2", text)
     text = re.sub(r"(\d+\.\d{4})-\s+(?=\1(?:-|\s))", r"", text)
     text = re.sub(r"(?<=\d)-\s+(?=\d)", "-", text)
-    text = re.sub(
-        r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)",
-        r"\1\2-\2", text,
-    )
+    text = re.sub(r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)", r"\1\2-\2", text)
     return text
 
 
