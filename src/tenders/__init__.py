@@ -3,8 +3,9 @@
 from rich.console import Console
 from rich.progress import (
     BarColumn,
+    MofNCompleteColumn,
     Progress,
-    TaskProgressColumn,
+    SpinnerColumn,
     TextColumn,
     TimeElapsedColumn,
 )
@@ -16,10 +17,10 @@ console = Console()
 
 def make_progress() -> Progress:
     return Progress(
+        SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
-        TaskProgressColumn(),
-        TextColumn("{task.completed}/{task.total}"),
+        MofNCompleteColumn(),
         TimeElapsedColumn(),
         console=console,
     )

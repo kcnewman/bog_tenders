@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 import openpyxl
 from rich.progress import Progress, TaskID
+from rich.text import Text
 
 from . import console, make_progress
 from .notice import FIELD_NAMES, HEADERS, AuctionRow, ParseError, parse_pdf
@@ -22,12 +22,12 @@ def discover_pdfs(paths: Iterable[str]) -> list[Path]:
         if p.is_dir():
             matches = sorted(p.glob("**/*.pdf"))
             if not matches:
-                print(f"warning: {p}: no PDFs found", file=sys.stderr)
+                console.print(f"[yellow]warning:[/] {p}: no PDFs found")
             found.update(matches)
         elif p.is_file():
             found.add(p)
         else:
-            print(f"warning: {p}: path does not exist, skipping", file=sys.stderr)
+            console.print(f"[yellow]warning:[/] {p}: path does not exist, skipping")
     return sorted(found)
 
 
@@ -41,7 +41,7 @@ def collect_rows(
         try:
             rows.extend(parse_pdf(path))
         except ParseError as exc:
-            print(f"warning: {path.name}: skipped — {exc}", file=sys.stderr)
+            console.print(f"[yellow]warning:[/] {path.name}: skipped — {exc}")
         if progress is not None and task_id is not None:
             progress.update(task_id, advance=1)
     return rows
@@ -74,14 +74,16 @@ def _build(out_path: Path, rows: list[AuctionRow]) -> int:
     for row in rows:
         ws.append([getattr(row, name) for name in FIELD_NAMES])
     wb.save(out_path)
-    print(f"wrote {len(rows)} rows to {out_path}")
+    console.print(
+        Text.assemble(("wrote ", ""), (str(len(rows)), "bold"), (" rows to ", ""), (str(out_path), "bold"))
+    )
     return len(rows)
 
 
 def _append(out_path: Path, rows: list[AuctionRow]) -> int:
     wb = openpyxl.load_workbook(out_path)
     if "Auction Results" not in wb.sheetnames:
-        print(f"error: '{out_path}' has no 'Auction Results' sheet", file=sys.stderr)
+        console.print(f"[red]error:[/] '{out_path}' has no 'Auction Results' sheet")
         return 0
     ws = wb["Auction Results"]
 
@@ -93,14 +95,22 @@ def _append(out_path: Path, rows: list[AuctionRow]) -> int:
         ws.append([getattr(row, name) for name in FIELD_NAMES])
 
     wb.save(out_path)
-    print(f"added {len(new_rows)} rows to {out_path} ({skipped} already present)")
+    console.print(
+        Text.assemble(
+            ("added ", ""),
+            (str(len(new_rows)), "bold"),
+            (" rows to ", ""),
+            (str(out_path), "bold"),
+            (f" ({skipped} already present)", "dim"),
+        )
+    )
     return len(new_rows)
 
 
 def main(args: argparse.Namespace) -> None:
     pdf_paths = discover_pdfs(args.paths)
     if not pdf_paths:
-        print("error: no PDF files found in the given paths", file=sys.stderr)
+        console.print("[red]error:[/] no PDF files found in the given paths")
         raise SystemExit(1)
 
     with make_progress() as progress:

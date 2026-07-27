@@ -55,7 +55,7 @@ def _run_download(args: argparse.Namespace) -> None:
                 )
                 total_found += found
                 total_count += total
-        table = Table.grid(padding=(0, 2))
+        table = Table(show_header=False, box=None, padding=(0, 2))
         table.add_column()
         table.add_column(justify="right")
         table.add_column(style="dim")
