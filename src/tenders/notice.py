@@ -27,7 +27,7 @@ ISSUE_RE = re.compile(
     re.IGNORECASE,
 )
 TARGET_RE = re.compile(
-    r"TARGET FOR .*?GH¢\s*([\d,]+(?:\.\d+)?)\s*Million"
+    r"TARGET FOR .*?GH¢\s*([\d,.\s]+)\s*Million"
 )
 
 
@@ -93,7 +93,7 @@ HEADERS = [
 
 
 def _to_float(s: str) -> float:
-    s = s.replace(",", "")
+    s = re.sub(r"[,\s]", "", s)
     if s.count(".") > 1:
         s = s[: s.rindex(".")].replace(".", "") + s[s.rindex(".") :]
     return float(s.rstrip("."))
@@ -106,6 +106,9 @@ def _clean_text(text: str) -> str:
     text = re.sub(r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)", r"\1\2-\2", text)
     text = re.sub(r"T\s*/\s*B\s*I\s*L\s*L", "T/BILL", text)
     text = re.sub(r"G\s*H\s*¢", "GH¢", text)
+    text = re.sub(r"\bD\s+A\s+Y\b", "DAY", text)
+    text = re.sub(r"\bM\s*i\s*l\s*l\s*i\s*o\s*n\b", "Million", text)
+    text = re.sub(r"\bA\s+N\s+D\b", "AND", text)
     return text
 
 
@@ -113,10 +116,17 @@ def _extract_target(chars: list[dict[str, Any]]) -> float | None:
     by_top: dict[int, list[tuple[float, str]]] = {}
     for c in chars:
         by_top.setdefault(round(c["top"]), []).append((c["x0"], c["text"]))
-    for top in sorted(by_top):
-        line = "".join(text for _, text in sorted(by_top[top], key=lambda x: x[0]))
-        if "TARGET" in line and "T/BILL" in line:
-            m = re.search(r"GH¢\s*([\d,]+(?:\.\d+)?)\s*Million", line)
+    sorted_tops = sorted(by_top)
+    for i, top in enumerate(sorted_tops):
+        line = "".join(t for _, t in sorted(by_top[top], key=lambda x: x[0]))
+        if "TARGET" not in line or "T/BILL" not in line:
+            continue
+        m = re.search(r"GH¢\s*([\d,]+(?:\.\d+)?)", line)
+        if m:
+            return _to_float(m.group(1))
+        if i + 1 < len(sorted_tops):
+            next_line = "".join(t for _, t in sorted(by_top[sorted_tops[i + 1]], key=lambda x: x[0]))
+            m = re.search(r"GH¢\s*([\d,]+(?:\.\d+)?)", next_line)
             if m:
                 return _to_float(m.group(1))
     return None
