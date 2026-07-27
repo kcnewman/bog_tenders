@@ -3,7 +3,7 @@
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 console = Console()
 
