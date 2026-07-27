@@ -8,23 +8,24 @@ from typing import Any
 
 import pdfplumber
 
-_ALLOTTED = r"(?:(?:([\d.]+)\s*[–-]\s*([\d.]+))|([\d.]+))"
+_ALLOTTED = r"(?:(?:([\d.]+)\s*[–-]\s*([\d.]+))|([\d.]+(?![\d.])))"
 
 ROW_RE = re.compile(
-    r"(GHGGOGI?\d+)\s+(\d+\s*Day Bill)\s+"
-    r"GH¢\s*([\d,]+(?:\.\d+)+)\s+GH¢\s*([\d,]+(?:\.\d+)+)\s+"
-    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+" + _ALLOTTED + r"\s+" + _ALLOTTED + r"\s+"
-    r"([\d.]+)\s+([\d.]+)"
+    r"(GHGGOGI?\d+)\s+"
+    r"(\d+\s*(?:Year\s+)?T/Note|\d+\s+Day\s+(?:T/)?Bill)\s+"
+    r"GH¢?\s*([\d,]+(?:\.\d+)+)\s+GH¢?\s*([\d,]+(?:\.\d+)+)\s+"
+    r"([\d.]+)\s*[–-]\s*([\d.]+)\s+" + _ALLOTTED + r"\s+" + _ALLOTTED + r"\s*"
+    r"(\d+\.\d+)(?:\s+(\d+\.\d+))?"
 )
-NOTICE_RE = re.compile(r"NOTICE TO BANKS AND PUBLIC NO\.\s*(\S+)")
+NOTICE_RE = re.compile(r"NOTICE TO BANKS AND PUBLIC NO\.?\s*(\S+)")
 TENDER_RE = re.compile(
-    r"RESULTS OF TENDER\s*(\d+)\s*HELD ON\s*(\d+)\w*\s+(\w+)\.?\s+(\d{4})"
+    r"RESULTS OF TENDER\s*(\d+)\s*HELD ON\s*(\d+)\w*\s*(\w+)[,.]?\s+(\d{4})"
 )
-ISSUE_RE = re.compile(r"SECURITIES TO BE ISSUED ON\s*(\d+)\w*\s+(\w+)\.?\s+(\d{4})")
+ISSUE_RE = re.compile(r"SECURITIES TO BE ISSUED ON\s*(\d+)\w*\s*(\w+)[,.]?\s+(\d{4})")
 TARGET_RE = re.compile(
     r"TARGET FOR 91"
     r"(?:,\s*182\s+AND\s+364-DAY| AND 182-DAY)"
-    r"\s+T/BILLS:\s*GH¢\s*([\d,]+(?:\.\d+)?)\s*Million"
+    r"\s+T/BILLS:\s*GH¢?\s*([\d,]+(?:\.\d+)?)\s*Million"
 )
 
 
@@ -100,6 +101,18 @@ def _to_float(s: str) -> float:
     return float(s)
 
 
+def _clean_text(text: str) -> str:
+    text = re.sub(r"(\d+\.\d{4})\.(\d+\.\d{4})", r"\1-\2", text)
+    text = re.sub(r"(\d+\.\d{4})-\s+(?=\1(?:-|\s))", r"", text)
+    text = re.sub(r"(?<=\d)-\s+(?=\d)", "", text)
+    text = re.sub(
+        r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)",
+        r"\1\2-\2",
+        text,
+    )
+    return text
+
+
 def parse_pdf(path: Path) -> list[AuctionRow]:
     try:
         with pdfplumber.open(path) as pdf:
@@ -108,6 +121,7 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
             chars = page.chars
     except Exception as exc:
         raise ParseError(f"could not read PDF ({exc})") from exc
+    text = _clean_text(text)
 
     notice_m = NOTICE_RE.search(text)
     tender_m = TENDER_RE.search(text)
@@ -140,8 +154,8 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
             return v, v
         return _to_float(m.group(low_idx)), _to_float(m.group(high_idx))
 
-    rows = [
-        AuctionRow(
+    def _build_row(m: re.Match[str]) -> AuctionRow:
+        return AuctionRow(
             notice_no=notice_no,
             tender_no=tender_no,
             tender_date=tender_date,
@@ -157,11 +171,35 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
             allotted_interest_low=_range_or_single(m, 10, 11, 12)[0],
             allotted_interest_high=_range_or_single(m, 10, 11, 12)[1],
             weighted_avg_discount=_to_float(m.group(13)),
-            weighted_avg_interest=_to_float(m.group(14)),
+            weighted_avg_interest=_to_float(m.group(14)) if m.group(14) else 0.0,
             target_ghs_m=target,
         )
-        for m in ROW_RE.finditer(text)
-    ]
+
+    lines = text.split("\n")
+    rows = []
+    for i, line in enumerate(lines):
+        if not line.startswith("GHGGOG"):
+            continue
+        m = ROW_RE.search(line)
+        if m:
+            rows.append(_build_row(m))
+            continue
+        for offset in range(1, min(4, len(lines) - i)):
+            combined = line + " " + lines[i + offset]
+            m = ROW_RE.search(combined)
+            if m:
+                row = _build_row(m)
+                if m.group(14) is None:
+                    after = combined[m.end(13):m.end(13)+15]
+                    if after.startswith(("-", "–")):
+                        singles = re.findall(r"\d+\.\d{4}", line.split(m.group(6), 1)[-1])
+                        if len(singles) >= 2:
+                            row.weighted_avg_discount = _to_float(singles[-2])
+                            row.weighted_avg_interest = _to_float(singles[-1])
+                        else:
+                            row.weighted_avg_discount = 0.0
+                rows.append(row)
+                break
 
     if len(rows) not in (2, 3):
         raise ParseError(f"expected 2 or 3 tenor rows, found {len(rows)}")
