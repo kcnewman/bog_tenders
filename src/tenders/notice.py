@@ -27,9 +27,7 @@ ISSUE_RE = re.compile(
     re.IGNORECASE,
 )
 TARGET_RE = re.compile(
-    r"TARGET FOR 91"
-    r"(?:,\s*182\s+AND\s+364-DAY| AND 182-DAY)"
-    r"\s+T/BILLS:\s*GH¢?\s*([\d,]+(?:\.\d+)?)\s*Million"
+    r"TARGET FOR .*?GH¢\s*([\d,]+(?:\.\d+)?)\s*Million"
 )
 
 
@@ -105,9 +103,9 @@ def _clean_text(text: str) -> str:
     text = re.sub(r"(\d+\.\d{4})\.(\d+\.\d{4})", r"\1-\2", text)
     text = re.sub(r"(\d+\.\d{4})-\s+(?=\1(?:-|\s))", r"", text)
     text = re.sub(r"(?<=\d)-\s+(?=\d)", "-", text)
-    text = re.sub(
-        r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)", r"\1\2-\2", text
-    )
+    text = re.sub(r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)", r"\1\2-\2", text)
+    text = re.sub(r"T\s*/\s*B\s*I\s*L\s*L", "T/BILL", text)
+    text = re.sub(r"G\s*H\s*¢", "GH¢", text)
     return text
 
 
@@ -117,8 +115,8 @@ def _extract_target(chars: list[dict[str, Any]]) -> float | None:
         by_top.setdefault(round(c["top"]), []).append((c["x0"], c["text"]))
     for top in sorted(by_top):
         line = "".join(text for _, text in sorted(by_top[top], key=lambda x: x[0]))
-        if "TARGET FOR 91" in line:
-            m = re.search(r"T/BILLS:.*?([\d,]+\.\d+)\s*Million", line)
+        if "TARGET" in line and "T/BILL" in line:
+            m = re.search(r"GH¢\s*([\d,]+(?:\.\d+)?)\s*Million", line)
             if m:
                 return _to_float(m.group(1))
     return None
