@@ -17,7 +17,6 @@ from rich.progress import (
 from rich.table import Table
 from rich.text import Text
 
-from . import network
 from .dates import tender_date
 from .download import fetch_tender, fetch_year
 
@@ -29,17 +28,15 @@ def _run_download(args: argparse.Namespace) -> None:
     tender = cast("int | None", args.tender)
     output = cast("str", args.output)
     workers = cast("int", args.workers)
-    no_verify_ssl = cast("bool", args.no_verify_ssl)
+    verify = not cast("bool", args.no_verify_ssl)
     if not year and not tender:
         console.print("[red]error:[/] specify --year or --tender")
         raise SystemExit(1)
-    if no_verify_ssl:
-        network.verify_ssl = False
     out = Path(output)
     out.mkdir(parents=True, exist_ok=True)
     if tender is not None:
         d = tender_date(tender)
-        ok = fetch_tender(tender, out)
+        ok = fetch_tender(tender, out, verify=verify)
         label = Text("YES", style="green") if ok else Text("NO", style="red")
         console.print(f"  {tender}  ({d}) — {label}")
     else:
@@ -70,6 +67,7 @@ def _run_download(args: argparse.Namespace) -> None:
                     end_date=candidates_end,
                     progress=progress,
                     task_id=task,
+                    verify=verify,
                 )
                 total_found += found
                 total_count += total
