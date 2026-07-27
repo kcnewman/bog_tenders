@@ -90,3 +90,34 @@ def test_parse_1865_wa_values():
     row = by_isin["GHGGOG071564"]
     assert row.weighted_avg_discount == 23.8039
     assert row.weighted_avg_interest == 31.2404
+
+
+def test_parse_1794_target():
+    pdf = PDF_DIR / "Auctresults-1794.pdf"
+    if not pdf.exists():
+        pytest.skip("PDF not found")
+    rows = parse_pdf(pdf)
+    assert rows[0].target_ghs_m == 1004.00
+
+
+def test_parse_1809_target():
+    pdf = PDF_DIR / "Auctresults-1809.pdf"
+    if not pdf.exists():
+        pytest.skip("PDF not found")
+    rows = parse_pdf(pdf)
+    assert rows[0].target_ghs_m == 564.00
+
+
+def test_parse_2000_target():
+    pdf = PDF_DIR / "Auctresults-2000.pdf"
+    if not pdf.exists():
+        pytest.skip("PDF not found")
+    rows = parse_pdf(pdf)
+    assert rows[0].target_ghs_m == 4932.00
+
+
+def test_clean_text_t_bill_variants():
+    result = _clean_text("TARGET FOR 91 AND 182 DAY T/B ILL: GH ¢678.00 Million")
+    assert "T/BILL" in result
+    assert "GH¢" in result
+    assert "Million" in result
