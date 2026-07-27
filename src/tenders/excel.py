@@ -15,13 +15,12 @@ from . import console, make_progress
 from .notice import FIELD_NAMES, HEADERS, AuctionRow, ParseError, parse_pdf
 
 
-def discover_pdfs(paths: Iterable[str], recursive: bool = False) -> list[Path]:
+def discover_pdfs(paths: Iterable[str]) -> list[Path]:
     found: set[Path] = set()
     for raw in paths:
         p = Path(raw)
         if p.is_dir():
-            pattern = "**/*.pdf" if recursive else "*.pdf"
-            matches = sorted(p.glob(pattern))
+            matches = sorted(p.glob("**/*.pdf"))
             if not matches:
                 print(f"warning: {p}: no PDFs found", file=sys.stderr)
             found.update(matches)
@@ -99,7 +98,7 @@ def _append(out_path: Path, rows: list[AuctionRow]) -> int:
 
 
 def main(args: argparse.Namespace) -> None:
-    pdf_paths = discover_pdfs(args.paths, recursive=args.recursive)
+    pdf_paths = discover_pdfs(args.paths)
     if not pdf_paths:
         print("error: no PDF files found in the given paths", file=sys.stderr)
         raise SystemExit(1)

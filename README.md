@@ -42,7 +42,7 @@ Files are saved as `Auctresults-{N}.pdf` (default output: `auction reports`).
 tenders parse results.xlsx path/to/pdfs
 
 # append to existing tracker (auto-detected)
-tenders parse results.xlsx path/to/pdfs --recursive
+tenders parse results.xlsx path/to/pdfs
 
 # force new tracker even if file exists
 tenders parse --new results.xlsx path/to/pdfs
