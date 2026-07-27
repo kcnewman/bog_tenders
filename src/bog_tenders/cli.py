@@ -93,7 +93,11 @@ def _run_download(args: argparse.Namespace) -> None:
     else:
         end = date.today()
         assert year is not None
-        years = [int(y) for y in (year.split("-") if "-" in year else [year])]
+        if "-" in year:
+            start, end = year.split("-", 1)
+            years = list(range(int(start), int(end) + 1))
+        else:
+            years = [int(year)]
         total_found = 0
         total_count = 0
         with Progress(
