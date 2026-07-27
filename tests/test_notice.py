@@ -47,7 +47,7 @@ PDF_DIR = Path("auction reports")
         ("Auctresults-1701.pdf", 2),
         ("Auctresults-1794.pdf", 3),
         ("Auctresults-1865.pdf", 3),
-            ("Auctresults-1575.pdf", 2),  # 1 Year T/Note row has no WA values
+        ("Auctresults-1575.pdf", 2),  # 1 Year T/Note row has no WA values
         ("Auctresults-1809.pdf", 2),
     ],
 )

@@ -1,22 +1,41 @@
 from __future__ import annotations
 
+import os
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from html.parser import HTMLParser
 from pathlib import Path
-import threading
 
 import requests
-from requests.adapters import HTTPAdapter
 import urllib3
+from requests.adapters import HTTPAdapter
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 USER_AGENT = "Mozilla/5.0 (compatible; BOGFetch/1.0)"
-verify_ssl = False
 BASE_URL = "https://www.bog.gov.gh/wp-content/uploads"
 AUCTION_PAGE = "https://www.bog.gov.gh/gog_auction_results"
+
+_verify_ssl = os.environ.get("TENDERS_VERIFY_SSL", "").lower() in ("1", "true", "yes")
+_ssl_warned = False
+
+
+def _warn_insecure() -> None:
+    global _ssl_warned
+    if not _verify_ssl and not _ssl_warned:
+        _ssl_warned = True
+        print(
+            "warning: SSL verification disabled; set TENDERS_VERIFY_SSL=1 to enable",
+            file=sys.stderr,
+        )
+
+
+def configure_ssl(verify: bool) -> None:
+    global _verify_ssl
+    _verify_ssl = verify
+    _SessionPool.clear()
 
 
 class _SessionPool:
@@ -24,29 +43,41 @@ class _SessionPool:
 
     @classmethod
     def get(cls) -> requests.Session:
+        _warn_insecure()
         session = getattr(cls._local, "session", None)
         if session is None:
             session = requests.Session()
             session.headers.update({"User-Agent": USER_AGENT})
-            session.verify = verify_ssl
+            session.verify = _verify_ssl
             session.mount("https://", HTTPAdapter(pool_connections=10, pool_maxsize=20))
             cls._local.session = session
         return session
 
+    @classmethod
+    def clear(cls) -> None:
+        cls._local.session = None
+
 
 def month_variants(d: date) -> list[date]:
-    return [date(d.year, m, 1) for m in (d.month, d.month - 1, d.month + 1)
-            if 1 <= m <= 12
-            and not (m == d.month - 1 and d.day > 3)
-            and not (m == d.month + 1 and d.day < 29)]
+    return [
+        date(d.year, m, 1)
+        for m in (d.month, d.month - 1, d.month + 1)
+        if 1 <= m <= 12
+        and not (m == d.month - 1 and d.day > 3)
+        and not (m == d.month + 1 and d.day < 29)
+    ]
 
 
 def pdf_url(tender_number: int, d: date, suffix: str = "") -> str:
-    return f"{BASE_URL}/{d.year:04d}/{d.month:02d}/Auctresults-{tender_number}{suffix}.pdf"
+    return (
+        f"{BASE_URL}/{d.year:04d}/{d.month:02d}/Auctresults-{tender_number}{suffix}.pdf"
+    )
 
 
 def probe_urls_for_tender(tender_number: int, d: date) -> list[str]:
-    return [pdf_url(tender_number, md, s) for md in month_variants(d) for s in ("", "x")]
+    return [
+        pdf_url(tender_number, md, s) for md in month_variants(d) for s in ("", "x")
+    ]
 
 
 def auction_page_url(tender_number: int) -> str:
@@ -55,7 +86,10 @@ def auction_page_url(tender_number: int) -> str:
 
 def url_exists(url: str) -> bool:
     try:
-        return _SessionPool.get().head(url, timeout=10, allow_redirects=True).status_code == 200
+        return (
+            _SessionPool.get().head(url, timeout=10, allow_redirects=True).status_code
+            == 200
+        )
     except Exception:
         return False
 
@@ -103,7 +137,10 @@ class _LinkFinder(HTMLParser):
             return
         attr_dict = dict(attrs)
         href = attr_dict.get("href") or ""
-        if self.url is None and "jet-button__instance" in (attr_dict.get("class") or "").split():
+        if (
+            self.url is None
+            and "jet-button__instance" in (attr_dict.get("class") or "").split()
+        ):
             self.url = href
         if self.fallback is None and href.lower().endswith(".pdf"):
             self.fallback = href

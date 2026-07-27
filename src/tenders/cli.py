@@ -9,7 +9,7 @@ from typing import cast
 from rich.table import Table
 from rich.text import Text
 
-from . import console, make_progress
+from . import __version__, console, make_progress
 from .dates import tender_date
 from .download import fetch_tender, fetch_year
 
@@ -21,37 +21,56 @@ class TendersCLI:
         if len(sys.argv) == 1:
             self._build_parser().print_help()
             return
+        if "--version" in sys.argv:
+            print(f"tenders {__version__}")
+            return
         if sys.argv[1] not in ("download", "parse", "-h", "--help"):
             sys.argv.insert(1, "download")
         args = self._build_parser().parse_args()
         (self._download if args.command == "download" else self._parse)(args)
 
     def _build_parser(self) -> argparse.ArgumentParser:
-        p = argparse.ArgumentParser(prog="tenders", description="BOG GOG T-Bill auction results tool")
+        p = argparse.ArgumentParser(
+            prog="tenders", description="BOG GOG T-Bill auction results tool"
+        )
+        p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
         s = p.add_subparsers(dest="command")
         dl = s.add_parser("download", help="Download PDFs from BOG website")
         dl.add_argument("--year", "-y", help="Year (2025) or range (2024-2026)")
         dl.add_argument("--tender", "-t", type=int, help="Specific tender number")
         dl.add_argument("--output", "-o", default="auction reports", help="Output dir")
-        dl.add_argument("--workers", "-w", type=int, default=6, help="Concurrent downloads")
+        dl.add_argument(
+            "--workers", "-w", type=int, default=6, help="Concurrent downloads"
+        )
         pr = s.add_parser("parse", help="Parse PDFs into structured output")
-        pr.add_argument("tracker", type=Path); pr.add_argument("paths", nargs="+")
-        pr.add_argument("--format", choices=("xlsx", "csv", "json"), help="Output format")
+        pr.add_argument("tracker", type=Path)
+        pr.add_argument("paths", nargs="+")
+        pr.add_argument(
+            "--format", choices=("xlsx", "csv", "json"), help="Output format"
+        )
         pr.add_argument("-n", "--new", action="store_true", help="Force new file")
         return p
 
     @staticmethod
-    def _print_summary(years: list[int], found: int, total: int, missed: dict[int, list[int]]) -> None:
+    def _print_summary(
+        years: list[int], found: int, total: int, missed: dict[int, list[int]]
+    ) -> None:
         console.clear()
         t = Table(show_header=False, box=None, padding=(0, 2))
-        t.add_column(); t.add_column(justify="right"); t.add_column(style="dim")
-        t.add_row(Text.assemble(("Total", "bold"), " tenders"), str(total),
-                  f"({found} found, {total - found} missed)")
+        t.add_column()
+        t.add_column(justify="right")
+        t.add_column(style="dim")
+        t.add_row(
+            Text.assemble(("Total", "bold"), " tenders"),
+            str(total),
+            f"({found} found, {total - found} missed)",
+        )
         if missed:
             t.add_section()
             for y in years:
                 m = missed.get(y)
-                if m: t.add_row(f"  {y}", "", ", ".join(str(n) for n in sorted(m)))
+                if m:
+                    t.add_row(f"  {y}", "", ", ".join(str(n) for n in sorted(m)))
         console.print(t)
 
     def _download(self, args: argparse.Namespace) -> None:
@@ -82,17 +101,25 @@ class TendersCLI:
         with make_progress() as progress:
             for y in years:
                 task = progress.add_task(f"  {y}", total=0)
-                f, t, m = fetch_year(y, out, workers,
-                                     end_date=end if y == years[-1] else None,
-                                     progress=progress, task_id=task)
-                found += f; total += t
-                if m: missed[y] = m
+                f, t, m = fetch_year(
+                    y,
+                    out,
+                    workers,
+                    end_date=end if y == years[-1] else None,
+                    progress=progress,
+                    task_id=task,
+                )
+                found += f
+                total += t
+                if m:
+                    missed[y] = m
         self._print_summary(years, found, total, missed)
 
     def _parse(self, args: argparse.Namespace) -> None:
         fmt = args.format or self.EXT_MAP.get(args.tracker.suffix.lower(), "xlsx")
         if fmt == "xlsx":
             from .excel import main as xl_main
+
             xl_main(args)
             return
 

@@ -74,12 +74,22 @@ def row_sort_key(row: AuctionRow) -> tuple[int, str]:
 
 
 HEADERS = [
-    "Notice No", "Tender No", "Tender Date", "Issue Date", "ISIN", "Tenor",
-    "Bids Tendered (GH¢M)", "Bids Accepted (GH¢M)",
-    "Bid Rate Range Low (%)", "Bid Rate Range High (%)",
-    "Allotted Discount Low (%)", "Allotted Discount High (%)",
-    "Allotted Interest Low (%)", "Allotted Interest High (%)",
-    "Weighted Avg Discount (%)", "Weighted Avg Interest (%)",
+    "Notice No",
+    "Tender No",
+    "Tender Date",
+    "Issue Date",
+    "ISIN",
+    "Tenor",
+    "Bids Tendered (GH¢M)",
+    "Bids Accepted (GH¢M)",
+    "Bid Rate Range Low (%)",
+    "Bid Rate Range High (%)",
+    "Allotted Discount Low (%)",
+    "Allotted Discount High (%)",
+    "Allotted Interest Low (%)",
+    "Allotted Interest High (%)",
+    "Weighted Avg Discount (%)",
+    "Weighted Avg Interest (%)",
     "Target (GH¢M)",
 ]
 
@@ -95,7 +105,9 @@ def _clean_text(text: str) -> str:
     text = re.sub(r"(\d+\.\d{4})\.(\d+\.\d{4})", r"\1-\2", text)
     text = re.sub(r"(\d+\.\d{4})-\s+(?=\1(?:-|\s))", r"", text)
     text = re.sub(r"(?<=\d)-\s+(?=\d)", "-", text)
-    text = re.sub(r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)", r"\1\2-\2", text)
+    text = re.sub(
+        r"(GH¢[\d,]+\.\d+\s+GH¢[\d,]+\.\d+\s+)(\d+\.\d{4})(?=\s+\d)", r"\1\2-\2", text
+    )
     return text
 
 
@@ -112,7 +124,9 @@ def _extract_target(chars: list[dict[str, Any]]) -> float | None:
     return None
 
 
-def _range_or_single(m: re.Match[str], lo: int, hi: int, si: int) -> tuple[float, float]:
+def _range_or_single(
+    m: re.Match[str], lo: int, hi: int, si: int
+) -> tuple[float, float]:
     if m.group(si) is not None:
         v = _to_float(m.group(si))
         return v, v
@@ -142,7 +156,9 @@ def parse_pdf(path: Path) -> list[AuctionRow]:
         raise ParseError(f"could not read PDF ({exc})") from exc
     text = _clean_text(text)
 
-    n_m, t_m, i_m, g_m = (r.search(text) for r in (NOTICE_RE, TENDER_RE, ISSUE_RE, TARGET_RE))
+    n_m, t_m, i_m, g_m = (
+        r.search(text) for r in (NOTICE_RE, TENDER_RE, ISSUE_RE, TARGET_RE)
+    )
     if not t_m:
         print(f"warning: {path.name}: tender number/date not found", file=sys.stderr)
 
@@ -191,11 +207,21 @@ class _ParseCtx:
         dl, dh = _range_or_single(m, 7, 8, 9)
         il, ih = _range_or_single(m, 10, 11, 12)
         return AuctionRow(
-            self.notice_no, self.tender_no, self.tender_date, self.issue_date,
-            g(1), g(2).replace("  ", " "),
-            _to_float(g(3)), _to_float(g(4)),
-            _to_float(g(5)), _to_float(g(6)),
-            dl, dh, il, ih,
-            _to_float(g(13)), _to_float(g(14)) if g(14) else 0.0,
+            self.notice_no,
+            self.tender_no,
+            self.tender_date,
+            self.issue_date,
+            g(1),
+            g(2).replace("  ", " "),
+            _to_float(g(3)),
+            _to_float(g(4)),
+            _to_float(g(5)),
+            _to_float(g(6)),
+            dl,
+            dh,
+            il,
+            ih,
+            _to_float(g(13)),
+            _to_float(g(14)) if g(14) else 0.0,
             self.target,
         )

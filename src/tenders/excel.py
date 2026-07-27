@@ -9,7 +9,14 @@ import openpyxl
 from rich.text import Text
 
 from . import console, make_progress
-from .notice import FIELD_NAMES, HEADERS, AuctionRow, ParseError, parse_pdf, row_sort_key
+from .notice import (
+    FIELD_NAMES,
+    HEADERS,
+    AuctionRow,
+    ParseError,
+    parse_pdf,
+    row_sort_key,
+)
 
 
 def discover_pdfs(paths: Iterable[str]) -> list[Path]:
@@ -41,7 +48,8 @@ def _write(wb: Any, out_path: Path, rows: list[AuctionRow]) -> int:
     ws = wb.active or wb.create_sheet()
     ws.title = "Auction Results"
     ws.append(HEADERS)
-    for d in _flatten(rows): ws.append(d)
+    for d in _flatten(rows):
+        ws.append(d)
     wb.save(out_path)
     return len(rows)
 
@@ -58,13 +66,19 @@ def _append(out_path: Path, rows: list[AuctionRow]) -> int:
         console.print(f"[red]error:[/] '{out_path}' has no 'Auction Results' sheet")
         return 0
     ws = wb["Auction Results"]
-    existing = {(ws.cell(row=r, column=FIELD_NAMES.index("tender_no") + 1).value,
-                 ws.cell(row=r, column=FIELD_NAMES.index("isin") + 1).value)
-                for r in range(2, ws.max_row + 1)}
+    existing = {
+        (
+            ws.cell(row=r, column=FIELD_NAMES.index("tender_no") + 1).value,
+            ws.cell(row=r, column=FIELD_NAMES.index("isin") + 1).value,
+        )
+        for r in range(2, ws.max_row + 1)
+    }
     new = [r for r in rows if r.key not in existing]
     n_skipped = len(rows) - len(new)
     _write(wb, out_path, new)
-    console.print(f"added [bold]{len(new)}[/] rows to {out_path} [dim]({n_skipped} already present)[/]")
+    console.print(
+        f"added [bold]{len(new)}[/] rows to {out_path} [dim]({n_skipped} already present)[/]"
+    )
     return len(new)
 
 

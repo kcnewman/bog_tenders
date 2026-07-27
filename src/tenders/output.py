@@ -8,8 +8,9 @@ from .notice import FIELD_NAMES, HEADERS, AuctionRow, row_sort_key
 
 
 def _sorted_data(rows: list[AuctionRow]) -> list[dict[str, object]]:
-    return [{n: getattr(r, n) for n in FIELD_NAMES}
-            for r in sorted(rows, key=row_sort_key)]
+    return [
+        {n: getattr(r, n) for n in FIELD_NAMES} for r in sorted(rows, key=row_sort_key)
+    ]
 
 
 def write_csv(path: Path, rows: list[AuctionRow]) -> int:
