@@ -1,4 +1,4 @@
-# bog-tenders
+# tenders
 
 CLI tool for downloading and parsing Bank of Ghana GOG T-Bill auction result PDFs
 into structured Excel reports.
@@ -6,8 +6,8 @@ into structured Excel reports.
 ## Install
 
 ```bash
-git clone https://github.com/kcnewman/bog_tenders.git
-cd bog_tenders
+git clone https://github.com/kcnewman/tender.git
+cd tender
 uv tool install .
 ```
 
@@ -17,16 +17,16 @@ uv tool install .
 
 ```bash
 # single tender
-bog-tenders download --tender 1943
+tenders download --tender 1943
 
 # full year
-bog-tenders download --year 2025
+tenders download --year 2025
 
 # year range
-bog-tenders download --year 2024-2026
+tenders download --year 2024-2026
 
 # custom output directory, 8 concurrent workers
-bog-tenders download --year 2025 -o ./pdfs -w 8
+tenders download --year 2025 -o ./pdfs -w 8
 ```
 
 Files are saved as `Auctresults-{N}.pdf` (default output: `auction reports`).
@@ -35,10 +35,13 @@ Files are saved as `Auctresults-{N}.pdf` (default output: `auction reports`).
 
 ```bash
 # create new Excel tracker
-bog-tenders parse build results.xlsx path/to/pdfs
+tenders parse results.xlsx path/to/pdfs
 
-# append to existing tracker
-bog-tenders parse append results.xlsx path/to/pdfs --recursive
+# append to existing tracker (auto-detected)
+tenders parse results.xlsx path/to/pdfs --recursive
+
+# force new tracker even if file exists
+tenders parse --new results.xlsx path/to/pdfs
 ```
 
 ## Logic
